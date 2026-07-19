@@ -146,23 +146,10 @@ export class KnowledgeBaseApi {
 
   // ── Resources (images embedded in note HTML) ───────────────────────────
 
-  /**
-   * Upload an image (or any binary) as a note resource.
-   * WizNote's "image" resource endpoint accepts arbitrary blobs; keep this name
-   * for backward compatibility. For file attachments, prefer `uploadAttachment`.
-   * @param {string} docGuid
-   * @param {FormData} formData  must contain `file` field
-   */
-  uploadImage (docGuid, formData) {
-    return execRequest('POST',
-      this._kb(`/ks/resource/upload/${this.kbGuid}/${docGuid}`),
-      { body: formData, token: this._t() })
-  }
-
-  /** Alias for uploadImage — clearer name when uploading non-image binaries. */
-  uploadResource (docGuid, formData) {
-    return this.uploadImage(docGuid, formData)
-  }
+  // NOTE: resource upload endpoint (`POST /ks/resource/upload/*`) returned
+  // 500 / `kbGuid is not match` in probing against the public server; the
+  // upstream contract is unclear, so we don't expose an upload method here.
+  // Read-side (list / getUrl / download) works and is kept below.
 
   /**
    * List all resources embedded in a note (images, css, files).
@@ -267,54 +254,17 @@ export class KnowledgeBaseApi {
   }
 
   // ── Attachments (first-class file attachments) ─────────────────────────
+  //
+  // Only `listAttachments` is exposed. The `POST /ks/attachment/upload/*` and
+  // `GET /ks/attachment/download/*` endpoints referenced by earlier revisions
+  // return 404 on the public server (probed 2026-07-19). The correct upload/
+  // download contract for attachments hasn't been reverse-engineered yet;
+  // avoid exposing methods that never worked.
 
   /** List a note's attachments (metadata: name/size/hash/attGuid). */
   listAttachments (docGuid) {
     return execRequest('GET',
       this._kb(`/ks/note/attachments/${this.kbGuid}/${docGuid}`),
       { query: { extra: 1, clientType: 'web', clientVersion: '4.0' }, token: this._t() })
-  }
-
-  /**
-   * Upload a local file as an attachment.
-   * @param {string} docGuid
-   * @param {Blob|Buffer} fileData
-   * @param {string} name  attachment filename
-   */
-  async uploadAttachment (docGuid, fileData, name) {
-    if (!name) throw new Error('uploadAttachment requires a name')
-    const form = new FormData()
-    // Node's built-in FormData accepts Blob; wrap Buffer if needed
-    let blob = fileData
-    if (typeof Buffer !== 'undefined' && Buffer.isBuffer(fileData)) {
-      blob = new Blob([fileData])
-    }
-    form.append('file', blob, name)
-    return execRequest('POST',
-      this._kb(`/ks/attachment/upload/${this.kbGuid}/${docGuid}`),
-      { body: form, query: { clientType: 'web', clientVersion: '4.0' }, token: this._t() })
-  }
-
-  /**
-   * Get a signed URL for an attachment (embed in <a href> etc.).
-   * Note: WizNote's attachment endpoint expects the token in the X-Wiz-Token
-   * header, not a query param, so browser <img src>/<a href> won't work
-   * directly — use `downloadAttachment` for actual bytes.
-   */
-  getAttachmentUrl (docGuid, attGuid) {
-    return `${this.baseUrl}/ks/attachment/download/${this.kbGuid}/${docGuid}/${attGuid}`
-  }
-
-  /**
-   * Download an attachment as a Buffer.
-   * @returns {Promise<Buffer>}
-   */
-  async downloadAttachment (docGuid, attGuid) {
-    const url = this.getAttachmentUrl(docGuid, attGuid) +
-      '?clientType=web&clientVersion=4.0'
-    const res = await fetch(url, { headers: { 'X-Wiz-Token': this._t() } })
-    if (!res.ok) throw new Error(`Download failed: HTTP ${res.status}`)
-    const ab = await res.arrayBuffer()
-    return Buffer.from(ab)
   }
 }

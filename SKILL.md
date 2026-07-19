@@ -1,9 +1,11 @@
 ---
 name: wiznote-api
-description: 为知笔记 (WizNote / Wiz) REST API skill。用户提到"为知""为知笔记""wiz""WizNote""wiz.cn"或需要操作笔记时触发,涵盖:登录、笔记的增删改查(create/read/update/delete)、笔记搜索、文件夹/分类(category)管理、标签(tag)管理、图片/附件上传、kbGuid/kbServer/X-Wiz-Token/token 相关问题、私有化/自建服务器(endpoint)配置、凭据存储(OS Keychain / 环境变量 / 配置文件)。支持公网 as.wiz.cn 和企业内网自建服务器两种模式。Skill 自带可执行 Node 脚本 `scripts/wiz.js`,通过 `node ${SKILL_DIR}/scripts/wiz.js <cmd>` 调用。铁律:绝不硬编码凭据,绝不让用户在对话里贴密码,一律用 `wiz login` 交互登录并把 token 存进 OS Keychain。
+description: 为知笔记 (WizNote / Wiz) REST API skill。用户提到"为知""为知笔记""wiz""WizNote""wiz.cn"或需要操作笔记时触发,涵盖:登录、笔记的增删改查(create/read/update/delete)、笔记搜索、文件夹/分类(category)管理、标签(tag)管理、笔记内嵌资源(图片/文件)的读取和下载、kbGuid/kbServer/X-Wiz-Token/token 相关问题、私有化/自建服务器(endpoint)配置、凭据存储(OS Keychain / 环境变量 / 配置文件)。支持公网 as.wiz.cn 和企业内网自建服务器两种模式。⚠️ 图片/附件的上传接口当前未验证通过,不要承诺可以上传文件。Skill 自带可执行 Node 脚本 `scripts/wiz.js`,通过 `node ${SKILL_DIR}/scripts/wiz.js <cmd>` 调用。铁律:绝不硬编码凭据,绝不让用户在对话里贴密码,一律用 `wiz login` 交互登录并把 token 存进 OS Keychain。
 ---
 
 # WizNote API Skill
+
+> ⚠️ **上传能力未验证通过**:笔记正文的图片/文件上传(`/ks/resource/upload/*`)以及一等公民附件上传(`/ks/attachment/upload/*`)在公网服务端探测时分别返 500 和 404,当前 skill **不提供**上传接口,也不要向用户承诺可以上传文件。读侧(list / download)可用。见本文件"Resources"和"Attachments"两节。
 
 This skill is a **self-contained folder** — cloned into `~/.claude/skills/wiznote-api/` (or `.cursor/skills/wiznote-api/`). All code lives beside this file; no npm install needed to run.
 
@@ -166,12 +168,7 @@ const { buffer, contentType } = await wiz.downloadCollaborationResource(docGuid,
 ```
 Collab resources live at `{kbServer}/editor/{kbGuid}/{docGuid}/resources/{name}` and require the `x-live-editor-token` cookie — handled internally.
 
-**Upload** (legacy path; works for images and arbitrary blobs):
-```js
-const form = new FormData()
-form.append('file', blob, 'image.png')
-await wiz.kb.uploadImage(docGuid, form)  // or uploadResource() — same call
-```
+**Upload:** ❌ not supported. `POST /ks/resource/upload/:kb/:doc` returns 500 on the public server; no reverse-engineered replacement yet. If a user asks to embed an image / upload a resource, tell them this skill can't do it — they need to attach it via the WizNote app.
 
 CLI: `wiz res ls <docGuid>`, `wiz res get <docGuid> <name> [-o out]`, `wiz res all <docGuid> [-o dir] [--user]`. `--user` filters WizNote editor CSS/icons from bulk downloads on legacy notes.
 
@@ -179,11 +176,8 @@ CLI: `wiz res ls <docGuid>`, `wiz res get <docGuid> <name> [-o out]`, `wiz res a
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `kb.listAttachments(docGuid)` | `GET /ks/note/attachments/:kb/:doc` | list attachments with `attGuid`/`name`/`size` |
-| `kb.uploadAttachment(docGuid, buffer, name)` | `POST /ks/attachment/upload/:kb/:doc` | upload a file |
-| `kb.downloadAttachment(docGuid, attGuid)` | `GET /ks/attachment/download/:kb/:doc/:att` | returns Buffer |
-| `kb.getAttachmentUrl(docGuid, attGuid)` | — | returns raw URL (still needs `X-Wiz-Token` header) |
 
-**Attachment deletion has no dedicated endpoint.** To remove one: fetch the note HTML, strip the `<a href>` / `<img src>` reference, `updateNote(docGuid,{html})` — server garbage-collects orphans.
+**Upload / download / delete: ❌ not supported.** `POST /ks/attachment/upload/*` and `GET /ks/attachment/download/*` return 404 on the public server (probed 2026-07-19). The correct upload/download contract hasn't been reverse-engineered — do not use `wiz attach put/get/url`, they've been removed. Direct users to the WizNote app for attach ops.
 
 ## Collaboration notes (modern WizNote default)
 

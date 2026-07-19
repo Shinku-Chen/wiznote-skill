@@ -68,11 +68,22 @@ Token is refreshed with `GET /as/user/keep`; invalidated with `GET /as/user/logo
 | PUT    | `/ks/tag/move/:kbGuid` | change parent |
 | DELETE | `/ks/tag/delete/:kbGuid/:tagGuid` | delete |
 
-### Knowledge Base — resources
+### Knowledge Base — resources / attachments
 
-| HTTP | Path | Purpose |
-|---|---|---|
-| POST | `/ks/resource/upload/:kbGuid/:docGuid` | multipart `file` field |
+Upload endpoints have NOT been verified against a live server. Probing on the
+public cloud (`vipkshttps14.wiz.cn`, 2026-07-19) returned:
+
+| HTTP | Path | Observed | Notes |
+|---|---|---|---|
+| POST | `/ks/resource/upload/:kbGuid/:docGuid` | 500 or `kbGuid is not match` | probable contract mismatch |
+| POST | `/ks/attachment/upload/:kbGuid/:docGuid` | 404 | endpoint absent |
+| GET  | `/ks/attachment/download/:kbGuid/:docGuid/:attGuid` | 404 | endpoint absent |
+| GET  | `/ks/note/attachments/:kbGuid/:docGuid` | 200 | listing works |
+
+Reading resources embedded in a note is done via `GET /ks/note/download/:kb/:doc`
+(the `resources` field of the response contains signed download URLs). Reading
+collaboration-note resources uses `{kbServer}/editor/:kb/:doc/resources/:name`
+with the `x-live-editor-token` cookie — see `src/collaboration.js`.
 
 ## Response envelope
 

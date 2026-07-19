@@ -1,8 +1,10 @@
 # wiznote-api skill
 
-WizNote(为知笔记)接口的 AI Skill。让 Claude Code、Cursor 等 AI 助手能安全地操作你的为知笔记 —— 建笔记、搜笔记、管标签、传图片。
+WizNote(为知笔记)接口的 AI Skill。让 Claude Code、Cursor 等 AI 助手能安全地操作你的为知笔记 —— 建笔记、搜笔记、管分类和标签、读回笔记里的图片/附件。
 
-密码不会存,只存登录后拿到的 token,优先放系统 Keychain。
+> ⚠️ 图片/附件的**上传**接口当前跑不通(服务端返 500/404),skill 只提供读侧能力(list / download),不承诺上传。见 [SKILL.md](SKILL.md) "Resources / Attachments" 两节。
+
+密码可以选存或不存;存的话只进系统 Keychain,用来在 token(15 分钟)过期时自动续登。
 
 ## 安装
 
