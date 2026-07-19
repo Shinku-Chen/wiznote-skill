@@ -7,7 +7,8 @@ import {
 import { WizApiError } from './request.js'
 import {
   createCollaborationNote, updateCollaborationNote, readCollaborationNote,
-  getCollaborationToken, fetchCollaborationContent
+  getCollaborationToken, fetchCollaborationContent,
+  listCollaborationResources, downloadCollaborationResource
 } from './collaboration.js'
 
 /**
@@ -109,6 +110,12 @@ export class WizClient {
 
   /** Read a collaboration note as Markdown (auto-falls back to HTML for legacy notes). */
   readCollaborationNote (docGuid) { return readCollaborationNote(this, docGuid) }
+
+  /** List images/files embedded in a collaboration note. */
+  listCollaborationResources (docGuid) { return listCollaborationResources(this, docGuid) }
+
+  /** Download a single collab-note resource (returns { buffer, contentType, name }). */
+  downloadCollaborationResource (docGuid, name) { return downloadCollaborationResource(this, docGuid, name) }
 
   /** Low-level: get an editor token. */
   getCollaborationToken (docGuid) {

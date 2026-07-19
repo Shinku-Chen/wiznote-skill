@@ -257,6 +257,61 @@ export async function updateCollaborationNote (wiz, { docGuid, markdown, title }
   return { docGuid, status: 'updated' }
 }
 
+/**
+ * List image/file resources embedded in a collaboration note.
+ * Returns [{ name, blockType }] — names come from image blocks' embedData.src.
+ * The list is inferred by walking the block tree; NOT a first-class API.
+ */
+export async function listCollaborationResources (wiz, docGuid) {
+  const tokenRes = await getCollaborationToken({
+    kbServer: wiz.kbServer, kbGuid: wiz.kbGuid, docGuid, token: wiz.token
+  })
+  const editorToken = tokenRes?.editorToken || tokenRes
+  const raw = await fetchCollaborationContent({
+    kbServer: wiz.kbServer, kbGuid: wiz.kbGuid, docGuid,
+    userGuid: wiz.userGuid, editorToken
+  })
+  let inner
+  try { inner = JSON.parse(raw)?.data?.data } catch {}
+  if (!inner?.blocks) return []
+  const out = []
+  const seen = new Set()
+  for (const b of inner.blocks) {
+    // image embed
+    if (b.type === 'embed' && b.embedType === 'image') {
+      const name = b.embedData?.src
+      if (name && !seen.has(name)) { seen.add(name); out.push({ name, blockType: 'image' }) }
+    }
+    // audio / file / drawio embeds also store src pointing to internal resources
+    if (b.type === 'embed' && ['audio', 'file', 'drawio'].includes(b.embedType)) {
+      const name = b.embedData?.src
+      if (name && !seen.has(name)) { seen.add(name); out.push({ name, blockType: b.embedType }) }
+    }
+  }
+  return out
+}
+
+/**
+ * Download a single resource embedded in a collaboration note.
+ * @returns {Promise<{buffer: Buffer, contentType: string, name: string}>}
+ */
+export async function downloadCollaborationResource (wiz, docGuid, name) {
+  const tokenRes = await getCollaborationToken({
+    kbServer: wiz.kbServer, kbGuid: wiz.kbGuid, docGuid, token: wiz.token
+  })
+  const editorToken = tokenRes?.editorToken || tokenRes
+  const url = `${wiz.kbServer}/editor/${wiz.kbGuid}/${docGuid}/resources/${encodeURIComponent(name)}`
+  const res = await fetch(url, {
+    headers: {
+      cookie: `x-live-editor-token=${editorToken}`,
+      'user-agent': 'Mozilla/5.0'
+    }
+  })
+  if (!res.ok) throw new Error(`collab resource download failed: HTTP ${res.status}`)
+  const buffer = Buffer.from(await res.arrayBuffer())
+  return { buffer, contentType: res.headers.get('content-type') || '', name }
+}
+
 export async function readCollaborationNote (wiz, docGuid) {
   const detail = await wiz.kb.getNoteContent(docGuid, { downloadInfo: 1, downloadData: 0 })
   const type = detail?.info?.type

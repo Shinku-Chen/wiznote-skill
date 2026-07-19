@@ -207,10 +207,40 @@ function renderText (arr = []) {
   }).join('')
 }
 
+/**
+ * Resolve an extra-block payload keyed by id. Handles two shapes:
+ *  - Legacy / SDK-created: single object { text: [...] } — a code cell / simple cell.
+ *  - Real WizNote: array of nested blocks [ {type:'text',text:[...]}, {type:'list',...}, ... ].
+ * Returns a flat string with sub-block texts joined by spaces (whitespace-collapsed).
+ */
 function extraText (full, id) {
-  const e = full[id]
-  if (!e || !Array.isArray(e.text) || !e.text.length) return ''
-  return e.text[0].insert || ''
+  const raw = full[id]
+  if (!raw) return ''
+  if (Array.isArray(raw)) {
+    const parts = raw
+      .map(b => Array.isArray(b?.text) ? renderText(b.text) : '')
+      .map(s => s.replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+    return parts.join(' ')
+  }
+  if (Array.isArray(raw.text)) return renderText(raw.text)
+  return ''
+}
+
+/**
+ * Like extraText but preserves line structure — for code-cell content where
+ * each sub-block is one line.
+ */
+function extraLines (full, id) {
+  const raw = full[id]
+  if (!raw) return ''
+  if (Array.isArray(raw)) {
+    return raw
+      .map(b => Array.isArray(b?.text) ? renderText(b.text) : '')
+      .join('\n')
+  }
+  if (Array.isArray(raw.text) && raw.text.length) return raw.text[0].insert || ''
+  return ''
 }
 
 function renderBlock (full, b) {
@@ -232,7 +262,7 @@ function renderBlock (full, b) {
         : `${indent}- ${prefix}${s}`
     }
     case 'code': {
-      const lines = (b.children || []).map(cid => extraText(full, cid))
+      const lines = (b.children || []).map(cid => extraLines(full, cid))
       return '```' + (b.language || '') + '\n' + lines.join('\n') + '\n```'
     }
     case 'table': {

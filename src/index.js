@@ -9,5 +9,6 @@ export {
 export { markdownToBlocks, blocksToMarkdown, parseInline } from './blocks.js'
 export {
   createCollaborationNote, updateCollaborationNote, readCollaborationNote,
-  getCollaborationToken, fetchCollaborationContent, writeCollaborationBlocks
+  getCollaborationToken, fetchCollaborationContent, writeCollaborationBlocks,
+  listCollaborationResources, downloadCollaborationResource
 } from './collaboration.js'

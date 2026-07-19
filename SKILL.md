@@ -147,12 +147,33 @@ If `WizClient.fromStored()` throws "token not found", instruct the user to run `
 | `kb.listShares()` | `GET /ks/share/list/:kb` |
 | `kb.cancelShare(shareId)` | `DELETE /ks/share/delete/:kb/:shareId` |
 
-### Resources (embedded images / arbitrary blobs)
+### Resources (images and files embedded in note body)
+
+Two distinct storage paths depending on note type — the CLI (`wiz res`) auto-detects and picks the right one.
+
+**Legacy / HTML note resources** (`kb.*`):
+```js
+const items = await wiz.kb.listResources(docGuid)        // [{name, size, time, url}]
+const url = await wiz.kb.getResourceUrl(docGuid, name)   // signed URL, no header needed
+const buf = await wiz.kb.downloadResource(docGuid, name) // Buffer
+```
+The `url` field is a signed URL — plain `fetch(url)` works without any auth header.
+
+**Collaboration note resources** (`wiz.*`):
+```js
+const items = await wiz.listCollaborationResources(docGuid)   // [{name, blockType}]
+const { buffer, contentType } = await wiz.downloadCollaborationResource(docGuid, name)
+```
+Collab resources live at `{kbServer}/editor/{kbGuid}/{docGuid}/resources/{name}` and require the `x-live-editor-token` cookie — handled internally.
+
+**Upload** (legacy path; works for images and arbitrary blobs):
 ```js
 const form = new FormData()
 form.append('file', blob, 'image.png')
 await wiz.kb.uploadImage(docGuid, form)  // or uploadResource() — same call
 ```
+
+CLI: `wiz res ls <docGuid>`, `wiz res get <docGuid> <name> [-o out]`, `wiz res all <docGuid> [-o dir] [--user]`. `--user` filters WizNote editor CSS/icons from bulk downloads on legacy notes.
 
 ### Attachments (first-class file attachments)
 | Method | Endpoint | Purpose |

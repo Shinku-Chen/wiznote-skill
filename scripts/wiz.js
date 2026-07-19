@@ -269,21 +269,41 @@ async function main () {
       case 'res': {
         const sub = rest[0]
         const wiz = await WizClient.fromStored()
+        // Detect note type once — collab notes use a different resource endpoint.
+        const detectCollab = async (docGuid) => {
+          // getNoteInfo returns empty for collab notes on some servers; use content-with-no-data.
+          const d = await wiz.kb.getNoteContent(docGuid, { downloadInfo: 1, downloadData: 0 }).catch(() => null)
+          return d?.info?.type === 'collaboration'
+        }
         switch (sub) {
           case 'ls': {
             if (!rest[1]) { console.error('usage: wiz res ls <docGuid>'); process.exit(1) }
-            const list = await wiz.kb.listResources(rest[1])
-            for (const r of list) {
-              console.log(`${r.name}  ${r.size ?? '?'}B  ${new Date(r.time || 0).toISOString().slice(0, 10)}`)
+            const isCollab = await detectCollab(rest[1])
+            if (isCollab) {
+              const list = await wiz.listCollaborationResources(rest[1])
+              for (const r of list) console.log(`${r.name}  [${r.blockType}]`)
+              console.error(`— ${list.length} collaboration resource(s)`)
+            } else {
+              const list = await wiz.kb.listResources(rest[1])
+              for (const r of list) {
+                console.log(`${r.name}  ${r.size ?? '?'}B  ${new Date(r.time || 0).toISOString().slice(0, 10)}`)
+              }
+              console.error(`— ${list.length} resource(s)`)
             }
-            console.error(`— ${list.length} resource(s)`)
             break
           }
           case 'get': {
             if (rest.length < 3) { console.error('usage: wiz res get <docGuid> <name> [-o out]'); process.exit(1) }
             const oIdx = rest.indexOf('-o')
             const outPath = oIdx > -1 ? rest[oIdx + 1] : rest[2]
-            const buf = await wiz.kb.downloadResource(rest[1], rest[2])
+            const isCollab = await detectCollab(rest[1])
+            let buf
+            if (isCollab) {
+              const r = await wiz.downloadCollaborationResource(rest[1], rest[2])
+              buf = r.buffer
+            } else {
+              buf = await wiz.kb.downloadResource(rest[1], rest[2])
+            }
             await fs.writeFile(outPath, buf)
             console.log(`Wrote ${buf.length} B → ${outPath}`)
             break
@@ -293,21 +313,37 @@ async function main () {
             const oIdx = rest.indexOf('-o')
             const outDir = oIdx > -1 ? rest[oIdx + 1] : `./resources-${rest[1].slice(0, 8)}`
             const userOnly = rest.includes('--user')
-            const list = await wiz.kb.listResources(rest[1])
-            const filtered = userOnly
-              ? list.filter(r => !/^(editor_|scrollbar_|wiz[A-Z]|Icons)/.test(r.name))
-              : list
+            const isCollab = await detectCollab(rest[1])
             await fs.mkdir(outDir, { recursive: true })
             let ok = 0, fail = 0, bytes = 0
-            for (const r of filtered) {
-              try {
-                const buf = await wiz.kb.downloadResource(rest[1], r.name)
-                await fs.writeFile(path.join(outDir, r.name), buf)
-                bytes += buf.length; ok++
-                console.log(`  ${r.name}  ${buf.length}B`)
-              } catch (e) {
-                fail++
-                console.error(`  ${r.name}  FAIL: ${e.message}`)
+            if (isCollab) {
+              const list = await wiz.listCollaborationResources(rest[1])
+              for (const r of list) {
+                try {
+                  const { buffer } = await wiz.downloadCollaborationResource(rest[1], r.name)
+                  await fs.writeFile(path.join(outDir, r.name), buffer)
+                  bytes += buffer.length; ok++
+                  console.log(`  ${r.name}  ${buffer.length}B  [${r.blockType}]`)
+                } catch (e) {
+                  fail++
+                  console.error(`  ${r.name}  FAIL: ${e.message}`)
+                }
+              }
+            } else {
+              const list = await wiz.kb.listResources(rest[1])
+              const filtered = userOnly
+                ? list.filter(r => !/^(editor_|scrollbar_|wiz[A-Z]|Icons)/.test(r.name))
+                : list
+              for (const r of filtered) {
+                try {
+                  const buf = await wiz.kb.downloadResource(rest[1], r.name)
+                  await fs.writeFile(path.join(outDir, r.name), buf)
+                  bytes += buf.length; ok++
+                  console.log(`  ${r.name}  ${buf.length}B`)
+                } catch (e) {
+                  fail++
+                  console.error(`  ${r.name}  FAIL: ${e.message}`)
+                }
               }
             }
             console.error(`— ${ok} downloaded (${bytes} B), ${fail} failed → ${outDir}`)

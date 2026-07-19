@@ -64,8 +64,13 @@ wiz ls --count=200               # 一页拉 200 篇
 wiz ls --start=50                # 从第 51 篇开始
 wiz ls /工作/ --all              # 自动翻页拉完整个文件夹
 wiz search 关键词                # 搜笔记
-wiz cat <docGuid>                # 看笔记内容
+wiz cat <docGuid>                # 看笔记内容(HTML/协作笔记)
+wiz collab read <docGuid>        # 协作笔记转 Markdown 输出
 wiz tags                         # 列出标签
+
+wiz res ls <docGuid>             # 列出笔记里嵌入的图片/文件
+wiz res get <docGuid> <name>     # 下载单个,-o 指定输出路径
+wiz res all <docGuid> -o ./out   # 一把梭下载所有到目录,--user 过滤系统资源
 wiz save-password / forget-password  # 开/关自动续登
 wiz logout                       # 登出并清本地(token + 密码都清)
 ```
@@ -78,6 +83,7 @@ wiz logout                       # 登出并清本地(token + 密码都清)
 
 - "把今天的会议纪要建一篇笔记(Markdown 内容),放到 `/工作/2026/` 文件夹" —— 会走**协作笔记**流程
 - "把某篇协作笔记读出来给我看" —— 自动转换成 Markdown
+- "把 xxx 笔记里的图片全下下来" —— `wiz res` 自动识别是 HTML 还是协作笔记走对应端点
 - "把今天的会议纪要建一篇笔记,放到 `/工作/2026/` 文件夹"
 - "搜一下我笔记里所有提到 `Rust` 的,列出标题"
 - "把这张截图上传到笔记 `xxx-guid` 里"
