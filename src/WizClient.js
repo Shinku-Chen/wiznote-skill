@@ -9,7 +9,8 @@ import {
   createCollaborationNote, updateCollaborationNote, readCollaborationNote,
   getCollaborationToken, fetchCollaborationContent,
   listCollaborationResources, downloadCollaborationResource,
-  uploadCollabResource, appendCollabEmbeds, collabUploadAndEmbed
+  uploadCollabResource, appendCollabEmbeds, collabUploadAndEmbed,
+  hasCollabResource
 } from './collaboration.js'
 import { uploadAndEmbed, attachAndLink } from './embed.js'
 import { createMarkdownNote, updateMarkdownNote, readMarkdownNote } from './markdown.js'
@@ -163,6 +164,9 @@ export class WizClient {
 
   /** One-shot: upload files AND insert matching embed blocks in a collab note. */
   collabUploadAndEmbed (docGuid, items, opts) { return collabUploadAndEmbed(this, docGuid, items, opts) }
+
+  /** Cheap dedupe probe: does the KS already have these bytes? */
+  hasCollabResource (docGuid, bufferOrHash) { return hasCollabResource(this, docGuid, bufferOrHash) }
 
   /** Low-level: get an editor token. */
   getCollaborationToken (docGuid) {

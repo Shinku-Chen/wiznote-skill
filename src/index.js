@@ -11,7 +11,8 @@ export {
   createCollaborationNote, updateCollaborationNote, readCollaborationNote,
   getCollaborationToken, fetchCollaborationContent, writeCollaborationBlocks,
   listCollaborationResources, downloadCollaborationResource,
-  uploadCollabResource, appendCollabEmbeds, collabUploadAndEmbed
+  uploadCollabResource, appendCollabEmbeds, collabUploadAndEmbed,
+  hasCollabResource
 } from './collaboration.js'
 export { uploadAndEmbed, attachAndLink } from './embed.js'
 export { wrapMarkdown, unwrapMarkdown, createMarkdownNote, updateMarkdownNote, readMarkdownNote } from './markdown.js'

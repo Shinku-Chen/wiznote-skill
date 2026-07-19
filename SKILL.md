@@ -396,6 +396,26 @@ Content-addressing (`src = base64url(sha256(bytes)) + '.' + ext`) means the
 server dedupes across the whole KS instance — re-uploading the same bytes to
 a new note is essentially free.
 
+**How to tell an upload was deduped** (skipped the bytes on the wire):
+
+`uploadCollabResource` returns `{..., deduped: boolean}` — read the flag off
+each result. `collabUploadAndEmbed(...).uploaded[]` carries the same flag.
+
+The signal comes from **Step 1's response body**:
+
+| response | meaning |
+|---|---|
+| `[]`                    | Server has NO copy of these bytes yet. Step 2 uploads bytes. `deduped: false`. |
+| `["<hash>.<ext>"]`      | Server already has these bytes (from any note, any user). Step 2 is **skipped** — no bytes leave your machine. `deduped: true`. |
+
+If you want to check availability WITHOUT registering a slot, use
+`wiz.hasCollabResource(docGuid, buffer|hash)` — but note it's **doc-scoped**:
+returns `exists: false` for a hash the server has stored under another doc,
+until you POST step 1 to bind it to this doc.
+
+CLI: `wiz collab embed …` prints `(deduped, no upload)` vs `(new upload)`
+per file and a summary `N embedded (K deduped, N-K bytes uploaded)`.
+
 CLI: `wiz collab new "<title>" -f md.md [--category=/x/] [--tags=a,b]`, `wiz collab read <docGuid>`, `wiz collab update <docGuid> -f md.md`.
 
 ## Error handling

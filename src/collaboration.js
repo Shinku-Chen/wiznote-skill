@@ -289,11 +289,18 @@ async function collabHeaders (wiz, docGuid) {
  * Upload a file into a collaboration note's resource bucket.
  * Returns metadata suitable for an `embed` block's `embedData`.
  *
+ * Server-side content-addressed dedupe: `src` = `base64url(sha256(bytes)) + '.' + ext`,
+ * bytes are stored once per hash across the whole KS instance. This helper
+ * detects dedupe via the Step 1 response and skips Step 2 when the bytes
+ * are already stored.
+ *
  * @param {WizClient} wiz
  * @param {string}    docGuid
  * @param {Buffer}    buffer
  * @param {string}    fileName    original filename (used for MIME + display)
- * @returns {Promise<{src, fileName, fileSize, fileType, hash}>}
+ * @returns {Promise<{src, fileName, fileSize, fileType, hash, deduped: boolean}>}
+ *   `deduped: true` means the server already had these bytes (from any note,
+ *   any user) — Step 2 was skipped, no bytes went over the wire.
  */
 export async function uploadCollabResource (wiz, docGuid, buffer, fileName) {
   if (!Buffer.isBuffer(buffer)) buffer = Buffer.from(buffer)
@@ -301,7 +308,12 @@ export async function uploadCollabResource (wiz, docGuid, buffer, fileName) {
   const mime = guessMime(fileName, buffer)
   const { headers, base } = await collabHeaders(wiz, docGuid)
 
-  // Step 1 — register slot
+  // Step 1 — register slot for this doc + hash.
+  // Response body signals dedupe status:
+  //   []                → server does NOT have these bytes yet; MUST run Step 2.
+  //   ["<hash>.<ext>"]  → server already has bytes (from an earlier upload
+  //                       anywhere on this KS); Step 2 is redundant, and the
+  //                       resource is immediately downloadable on this doc.
   const r1 = await fetch(`${base}/resources/${hash}`, {
     method: 'POST',
     headers: { ...headers, 'content-type': 'application/json' },
@@ -310,27 +322,62 @@ export async function uploadCollabResource (wiz, docGuid, buffer, fileName) {
   if (r1.status !== 201 && r1.status !== 200) {
     throw new Error(`collab upload step 1 failed: HTTP ${r1.status} ${await r1.text()}`)
   }
-
-  // Step 2 — upload bytes
-  const form = new FormData()
-  form.append('file-size', String(buffer.length))
-  form.append('file-hash', hash)
-  form.append('file', new Blob([buffer], { type: mime }), fileName)
-  const r2 = await fetch(`${base}/resources`, { method: 'POST', headers, body: form })
-  if (r2.status !== 201 && r2.status !== 200) {
-    throw new Error(`collab upload step 2 failed: HTTP ${r2.status} ${await r2.text()}`)
-  }
   let src
+  let deduped = false
   try {
-    const parsed = await r2.json()
-    if (Array.isArray(parsed) && parsed[0]) src = parsed[0]
+    const step1 = await r1.json()
+    if (Array.isArray(step1) && step1[0]) { src = step1[0]; deduped = true }
   } catch {}
-  // Fallback: reconstruct `hash.ext` from what we know if server didn't echo.
+
+  if (!deduped) {
+    // Step 2 — send bytes.
+    const form = new FormData()
+    form.append('file-size', String(buffer.length))
+    form.append('file-hash', hash)
+    form.append('file', new Blob([buffer], { type: mime }), fileName)
+    const r2 = await fetch(`${base}/resources`, { method: 'POST', headers, body: form })
+    if (r2.status !== 201 && r2.status !== 200) {
+      throw new Error(`collab upload step 2 failed: HTTP ${r2.status} ${await r2.text()}`)
+    }
+    try {
+      const parsed = await r2.json()
+      if (Array.isArray(parsed) && parsed[0]) src = parsed[0]
+    } catch {}
+  }
+
   if (!src) {
     const ext = (fileName.match(/\.([^.]+)$/) || [])[1]
     src = ext ? `${hash}.${ext.toLowerCase()}` : hash
   }
-  return { src, fileName, fileSize: buffer.length, fileType: mime, hash }
+  return { src, fileName, fileSize: buffer.length, fileType: mime, hash, deduped }
+}
+
+/**
+ * Cheap yes/no probe: is this resource ALREADY registered on THIS doc (i.e.
+ * downloadable from `/editor/:kb/:doc/resources/<hash>`)?
+ *
+ * ⚠ Doc-scoped, NOT global. A GET here returns 404 when the doc has no slot
+ * for this hash — even if the KS instance stores the bytes for another doc.
+ * To learn "does the server have these bytes globally", you must POST step 1
+ * (which is what `uploadCollabResource` does; it returns `deduped: true`
+ * when the server responds `["hash.ext"]` on that call).
+ *
+ * @param {WizClient} wiz
+ * @param {string}    docGuid  collab doc to probe against
+ * @param {Buffer|string} bufferOrHash
+ * @returns {Promise<{exists: boolean, hash: string, size?: number, contentType?: string}>}
+ */
+export async function hasCollabResource (wiz, docGuid, bufferOrHash) {
+  const hash = Buffer.isBuffer(bufferOrHash) ? hashBytes(bufferOrHash) : bufferOrHash
+  const { headers, base } = await collabHeaders(wiz, docGuid)
+  const r = await fetch(`${base}/resources/${hash}`, { headers })
+  const size = Number(r.headers.get('content-length')) || undefined
+  return {
+    exists: r.status === 200,
+    hash,
+    size,
+    contentType: r.headers.get('content-type') || undefined
+  }
 }
 
 /**

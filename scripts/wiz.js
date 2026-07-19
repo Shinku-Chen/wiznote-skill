@@ -330,9 +330,11 @@ async function main () {
               position: flags.prepend ? 'prepend' : 'append'
             })
             for (const u of r.uploaded) {
-              console.log(`  ${u.fileName}  ${u.fileSize}B  ${u.fileType}  src=${u.src}`)
+              const tag = u.deduped ? '(deduped, no upload)' : '(new upload)'
+              console.log(`  ${u.fileName}  ${u.fileSize}B  ${u.fileType}  src=${u.src}  ${tag}`)
             }
-            console.error(`— ${r.uploaded.length} uploaded and embedded into ${docGuid}`)
+            const dedup = r.uploaded.filter(u => u.deduped).length
+            console.error(`— ${r.uploaded.length} embedded into ${docGuid} (${dedup} deduped, ${r.uploaded.length - dedup} bytes uploaded)`)
             break
           }
           default:
