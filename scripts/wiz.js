@@ -41,6 +41,10 @@ function usage () {
   res get <docGuid> <name> [-o out]       Download one resource
   res all <docGuid> [-o dir] [--user]     Download all resources to a dir
                                           --user: skip WizNote editor assets (editor_/scrollbar_/wiz*)
+  res upload <docGuid> <file>...          Upload files AND embed into note body.
+                                          Auto-picks <img>/<audio>/<video>/<a download>
+                                          by extension. --prepend to insert at top.
+                                          --heading="…" wraps the block in <h3>.
 
   collab new "<title>" [-f md.md] [--category=/x/] [--tags=a,b]
                                           Create a collaboration note from Markdown
@@ -348,6 +352,26 @@ async function main () {
               }
             }
             console.error(`— ${ok} downloaded (${bytes} B), ${fail} failed → ${outDir}`)
+            break
+          }
+          case 'upload': {
+            const flags = {}
+            const positional = []
+            for (const a of rest.slice(1)) {
+              const m = a.match(/^--([^=]+)(?:=(.*))?$/)
+              if (m) flags[m[1]] = m[2] === undefined ? true : m[2]
+              else positional.push(a)
+            }
+            if (positional.length < 2) { console.error('usage: wiz res upload <docGuid> <file>... [--prepend] [--heading=".."]'); process.exit(1) }
+            const [docGuid, ...files] = positional
+            const r = await wiz.uploadAndEmbed(docGuid, files, {
+              position: flags.prepend ? 'prepend' : 'append',
+              heading: flags.heading
+            })
+            for (const u of r.uploaded) {
+              console.log(`  ${u.name}  →  ${u.url}  [${u.kind}]`)
+            }
+            console.error(`— ${r.uploaded.length} uploaded and embedded into ${docGuid}`)
             break
           }
           default:

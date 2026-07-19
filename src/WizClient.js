@@ -10,6 +10,7 @@ import {
   getCollaborationToken, fetchCollaborationContent,
   listCollaborationResources, downloadCollaborationResource
 } from './collaboration.js'
+import { uploadAndEmbed } from './embed.js'
 
 /**
  * High-level client. Two ways to construct:
@@ -98,6 +99,15 @@ export class WizClient {
     })()
     try { return await this._reauthInFlight }
     finally { this._reauthInFlight = null }
+  }
+
+  /**
+   * Upload local files as note resources AND splice them into the note HTML
+   * in one shot. Auto-picks `<img>` / `<audio>` / `<video>` / `<a download>`
+   * by file extension. See src/embed.js for options.
+   */
+  uploadAndEmbed (docGuid, items, opts) {
+    return uploadAndEmbed(this, docGuid, items, opts)
   }
 
   // ── Collaboration notes (require `ws` package; on-premise / modern WizNote) ──

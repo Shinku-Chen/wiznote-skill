@@ -166,32 +166,35 @@ const { buffer, contentType } = await wiz.downloadCollaborationResource(docGuid,
 ```
 Collab resources live at `{kbServer}/editor/{kbGuid}/{docGuid}/resources/{name}` and require the `x-live-editor-token` cookie — handled internally.
 
-**Upload + embed** (legacy HTML notes; two-step pattern — upload the bytes, then rewrite the note HTML with references to the returned `url`):
-
+**Upload + embed in one call (preferred):**
 ```js
-// 1. upload the blob(s). Server returns a relative URL like `index_files/<name>`.
-const img = await wiz.kb.uploadResource(docGuid, await fs.readFile('pic.png'), 'pic.png')
-const wav = await wiz.kb.uploadResource(docGuid, await fs.readFile('a.wav'),  'a.wav')
-const zip = await wiz.kb.uploadResource(docGuid, await fs.readFile('pkg.zip'), 'pkg.zip')
+const r = await wiz.uploadAndEmbed(docGuid, [
+  'pic.png', 'audio.wav', 'pkg.zip'                       // string = local path
+  // or { path, name?, kind? }  — override display name or tag ('image'|'audio'|'video'|'link')
+], { position: 'append', heading: '附件区' })              // 'prepend' | 'append' (default)
+// r.uploaded → [{path, name, serverName, url, kind}]
+```
+Auto-picks the HTML tag by extension:
+- `image` (png/jpg/gif/webp/bmp/svg/avif/heic/ico) → `<img>`
+- `audio` (mp3/wav/ogg/m4a/flac/aac/opus) → `<audio controls>`
+- `video` (mp4/webm/mov/m4v/mkv/avi) → `<video controls>`
+- anything else → `<a href download>` link
 
-// 2. compose the new HTML — different tag per media type:
-const html = `<div class="wiz-note-body"><div class="wiz-note-html">
-  <p><img src="${img.url}" alt="pic.png"></p>
-  <p><audio controls src="${wav.url}"></audio></p>
-  <p><a href="${zip.url}" download="pkg.zip">pkg.zip</a></p>
-</div></div>`
-
-// 3. save the note.
-await wiz.kb.updateNote(docGuid, {
-  kbGuid: wiz.kbGuid, docGuid, html, url: '', tags: '', author: wiz.userId, resources: []
-})
+CLI equivalent:
+```
+wiz res upload <docGuid> <file>... [--prepend] [--heading="..."]
 ```
 
-Multipart uses field `data` (not `file`) with sibling `kbGuid` + `docGuid` form fields — the SDK handles this. `uploadImage` is a legacy alias for the same call.
+**Low-level upload only** (skip the HTML splice — you write the note yourself):
+```js
+const r = await wiz.kb.uploadResource(docGuid, await fs.readFile('pic.png'), 'pic.png')
+// r → { name: '1784451192606-tdt.png', url: 'index_files/1784451192606-tdt.png', ... }
+```
 
-**Server-side name vs your filename**: WizNote assigns each resource a short slug (e.g. `1784451457836-orc`) and returns it as `name` + `url`. Use `r.url` verbatim in the HTML; do NOT reference the original filename. You can still pass a display name to the user via `alt=`/`download=`.
-
-**`listResources` caveat**: for uploads done via `POST /ks/resource/upload/*`, `getNoteContent().resources` comes back **empty** even though the bytes ARE stored and downloadable. Fetch them by server-name via `GET /ks/object/download/:kb/:doc?objType=resource&objId=<name>` (needs `X-Wiz-Token`) or `GET /ks/note/view/:kb/:doc/index_files/<name>`. If you need discoverability, parse `<img src="index_files/...">` out of the note HTML yourself.
+**Gotchas the SDK already handles for you, but worth knowing:**
+- Multipart field must be named `data` (not `file`); form MUST also carry sibling `kbGuid` + `docGuid` fields — else server returns `kbGuid is not match`.
+- WizNote replaces the display filename with a server slug (e.g. `1784451192606-tdt`). Use `r.url` verbatim in HTML; pass the original filename via `alt=` / `download=` for user-facing labels.
+- `getNoteContent().resources` returns **empty** for resources uploaded through `/ks/resource/upload/*`, even though the bytes are stored and downloadable. To enumerate, parse `<img src="index_files/...">` out of the note HTML. To fetch bytes by server-name: `GET /ks/object/download/:kb/:doc?objType=resource&objId=<name>` (needs `X-Wiz-Token`) or `GET /ks/note/view/:kb/:doc/index_files/<name>`.
 
 CLI: `wiz res ls <docGuid>`, `wiz res get <docGuid> <name> [-o out]`, `wiz res all <docGuid> [-o dir] [--user]`. `--user` filters WizNote editor CSS/icons from bulk downloads on legacy notes.
 
