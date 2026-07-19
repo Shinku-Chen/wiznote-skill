@@ -22,6 +22,8 @@ jobs:
         shell: bash
         run: |
           set -e
-          find src scripts -name '*.js' -print0 | xargs -0 -n1 node --check
+          find src scripts test -name '*.js' -print0 | xargs -0 -n1 node --check
       - name: smoke import
         run: node -e "import('./src/index.js').then(m => console.log('exports:', Object.keys(m).join(', ')))"
+      - name: run tests
+        run: node --test test/
