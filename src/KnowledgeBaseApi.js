@@ -164,6 +164,38 @@ export class KnowledgeBaseApi {
     return this.uploadImage(docGuid, formData)
   }
 
+  /**
+   * List all resources embedded in a note (images, css, files).
+   * Each item: { name, size, time, url } — url is a signed download URL and
+   * needs NO auth header; plain fetch(url) works.
+   */
+  async listResources (docGuid) {
+    const detail = await this.getNoteContent(docGuid, { downloadInfo: 1, downloadData: 1 })
+    return detail?.resources || []
+  }
+
+  /**
+   * Get the signed download URL for a single resource by name.
+   * Returns null if the resource isn't found on the note.
+   */
+  async getResourceUrl (docGuid, name) {
+    const list = await this.listResources(docGuid)
+    const hit = list.find(r => r.name === name)
+    return hit?.url || null
+  }
+
+  /**
+   * Download a resource by name.
+   * @returns {Promise<Buffer>}
+   */
+  async downloadResource (docGuid, name) {
+    const url = await this.getResourceUrl(docGuid, name)
+    if (!url) throw new Error(`resource "${name}" not found on note ${docGuid}`)
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`resource download failed: HTTP ${res.status}`)
+    return Buffer.from(await res.arrayBuffer())
+  }
+
   // ── Comments ───────────────────────────────────────────────────────────
 
   getComments (docGuid) {

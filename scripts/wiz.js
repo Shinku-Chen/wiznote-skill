@@ -36,6 +36,11 @@ function usage () {
   attach get <docGuid> <attGuid> [-o]     Download attachment (default: name from list)
   attach url <docGuid> <attGuid>          Print raw download URL (needs X-Wiz-Token header)
 
+  res ls <docGuid>                        List a note's embedded resources (images/files)
+  res get <docGuid> <name> [-o out]       Download one resource
+  res all <docGuid> [-o dir] [--user]     Download all resources to a dir
+                                          --user: skip WizNote editor assets (editor_/scrollbar_/wiz*)
+
   collab new "<title>" [-f md.md] [--category=/x/] [--tags=a,b]
                                           Create a collaboration note from Markdown
   collab read <docGuid>                   Read collab note as Markdown
@@ -257,6 +262,59 @@ async function main () {
           }
           default:
             console.error('unknown collab subcommand:', sub)
+            process.exit(1)
+        }
+        break
+      }
+      case 'res': {
+        const sub = rest[0]
+        const wiz = await WizClient.fromStored()
+        switch (sub) {
+          case 'ls': {
+            if (!rest[1]) { console.error('usage: wiz res ls <docGuid>'); process.exit(1) }
+            const list = await wiz.kb.listResources(rest[1])
+            for (const r of list) {
+              console.log(`${r.name}  ${r.size ?? '?'}B  ${new Date(r.time || 0).toISOString().slice(0, 10)}`)
+            }
+            console.error(`— ${list.length} resource(s)`)
+            break
+          }
+          case 'get': {
+            if (rest.length < 3) { console.error('usage: wiz res get <docGuid> <name> [-o out]'); process.exit(1) }
+            const oIdx = rest.indexOf('-o')
+            const outPath = oIdx > -1 ? rest[oIdx + 1] : rest[2]
+            const buf = await wiz.kb.downloadResource(rest[1], rest[2])
+            await fs.writeFile(outPath, buf)
+            console.log(`Wrote ${buf.length} B → ${outPath}`)
+            break
+          }
+          case 'all': {
+            if (!rest[1]) { console.error('usage: wiz res all <docGuid> [-o dir] [--user]'); process.exit(1) }
+            const oIdx = rest.indexOf('-o')
+            const outDir = oIdx > -1 ? rest[oIdx + 1] : `./resources-${rest[1].slice(0, 8)}`
+            const userOnly = rest.includes('--user')
+            const list = await wiz.kb.listResources(rest[1])
+            const filtered = userOnly
+              ? list.filter(r => !/^(editor_|scrollbar_|wiz[A-Z]|Icons)/.test(r.name))
+              : list
+            await fs.mkdir(outDir, { recursive: true })
+            let ok = 0, fail = 0, bytes = 0
+            for (const r of filtered) {
+              try {
+                const buf = await wiz.kb.downloadResource(rest[1], r.name)
+                await fs.writeFile(path.join(outDir, r.name), buf)
+                bytes += buf.length; ok++
+                console.log(`  ${r.name}  ${buf.length}B`)
+              } catch (e) {
+                fail++
+                console.error(`  ${r.name}  FAIL: ${e.message}`)
+              }
+            }
+            console.error(`— ${ok} downloaded (${bytes} B), ${fail} failed → ${outDir}`)
+            break
+          }
+          default:
+            console.error('unknown res subcommand:', sub)
             process.exit(1)
         }
         break
