@@ -10,16 +10,16 @@ A **self-contained skill folder** for WizNote (为知笔记) REST API. Designed 
 
 Tell your AI:
 
-> Install the WizNote skill from `<this-repo-url>` into my Claude Code / Cursor skills folder.
+> Install the WizNote skill from `https://github.com/Shinku-Chen/wiznote-skill` into my Claude Code / Cursor skills folder.
 
 Or do it yourself:
 
 ```bash
 # Claude Code
-git clone <this-repo-url> ~/.claude/skills/wiznote-api
+git clone https://github.com/Shinku-Chen/wiznote-skill.git ~/.claude/skills/wiznote-api
 
 # Cursor (per-project)
-git clone <this-repo-url> .cursor/skills/wiznote-api
+git clone https://github.com/Shinku-Chen/wiznote-skill.git .cursor/skills/wiznote-api
 
 # Optional: enable OS Keychain storage
 cd ~/.claude/skills/wiznote-api && npm run setup

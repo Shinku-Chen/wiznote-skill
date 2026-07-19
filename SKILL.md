@@ -13,10 +13,10 @@ Node 18+ is required (uses built-in `fetch`). `keytar` is optional; without it, 
 
 ```bash
 # Claude Code
-git clone <this-repo-url> ~/.claude/skills/wiznote-api
+git clone https://github.com/Shinku-Chen/wiznote-skill.git ~/.claude/skills/wiznote-api
 
 # Cursor
-git clone <this-repo-url> .cursor/skills/wiznote-api
+git clone https://github.com/Shinku-Chen/wiznote-skill.git .cursor/skills/wiznote-api
 ```
 
 Optional (recommended, enables OS Keychain):
