@@ -83,6 +83,33 @@ Password storage requires `keytar` (`npm run setup`). If keytar isn't available,
 
 If `WizClient.fromStored()` throws "token not found", instruct the user to run `wiz login`. **Do NOT prompt for the password inside the chat.** Full rationale: [skill/references/credentials.md](skill/references/credentials.md).
 
+## Note types
+
+WizNote stores every note with a `type` field. The API surface (both official
+and reverse-engineered) exposes editors only for the first three; everything
+else is client-side only and can be **read but not created/edited** through
+this skill.
+
+| `type` | Human name | Payload shape | This skill |
+|---|---|---|---|
+| `document` | Regular note | HTML in `<div class="wiz-note-body">` | ✅ create / read / update / images / attachments |
+| `lite/markdown` | Markdown note | HTML5 shell + `<pre>markdown source</pre>` (see below) | ✅ `wiz.createMarkdownNote` / `updateMarkdownNote` / `readMarkdownNote` |
+| `collaboration` | Collab note | Block JSON via WebSocket (sharejs JSONv1) | ✅ `wiz.createCollaborationNote` + media upload/embed |
+| `outline` | Outline / tree note | Nested-node JSON in `html` field | 🟡 read only (list + `getNoteContent`) |
+| `tasklist` | Task list | Todo-item structure in `html` | 🟡 read only |
+| `journal` | Journal / work log | HTML with journal template variables | 🟡 base is `document`, editable that way (loses template semantics) |
+| `TemplateNote` | Templated note | HTML + structured fields, template-specific | 🟡 base is `document`, editable that way |
+| `webnote` | Web clipping | HTML from the browser extension | ❌ browser-extension only |
+| *(empty/null)* | Legacy | Old-client data | 🟡 treat as `document` for reads |
+
+**Rule of thumb when creating new notes**: pick from the ✅ trio.
+
+- Plain text / rich formatting / images / attachments → `document` (most stable, browser-clickable signed URLs, no `ws` dep).
+- Markdown source you want to diff/export/round-trip cleanly → `lite/markdown`.
+- Realtime multi-user editing / block-structured editor / native media embeds → `collaboration` (requires the optional `ws` package).
+
+**Reading any type**: `wiz.kb.getNoteContent(docGuid)` works — inspect the returned `info.type` to know how to parse `html`.
+
 ## API surface
 
 `wiz.account` — `AccountServerApi`:
