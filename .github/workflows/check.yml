@@ -1,0 +1,27 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  syntax:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: node --check every .js file
+        shell: bash
+        run: |
+          set -e
+          find src scripts -name '*.js' -print0 | xargs -0 -n1 node --check
+      - name: smoke import
+        run: node -e "import('./src/index.js').then(m => console.log('exports:', Object.keys(m).join(', ')))"
