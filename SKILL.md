@@ -1,66 +1,89 @@
 ---
 name: wiznote-api
-description: WizNote (为知笔记) REST API skill. Trigger when the user asks about WizNote / 为知 login, note CRUD, categories, tags, resource upload, search, kbGuid, kbServer, X-Wiz-Token, or when working with the `wiznote-sdk` package. Covers auth flow, credential storage (OS Keychain > env > config file), and every documented API endpoint. Do NOT hardcode credentials — always resolve via WizClient.fromStored() or environment variables.
+description: WizNote (为知笔记) REST API skill. Trigger when the user asks about WizNote / 为知 login, note CRUD, categories, tags, resource upload, search, kbGuid, kbServer, X-Wiz-Token. Covers auth flow, credential storage (OS Keychain > env > 0600 file), and every documented endpoint. This skill ships runnable Node scripts in the same directory — invoke them as `node ${SKILL_DIR}/scripts/wiz.js <cmd>`. Do NOT hardcode credentials, do NOT ask the user to paste passwords into chat; always route through the login script which stores tokens in the OS Keychain.
 ---
 
 # WizNote API Skill
 
-## Quick start
+This skill is a **self-contained folder** — cloned into `~/.claude/skills/wiznote-api/` (or `.cursor/skills/wiznote-api/`). All code lives beside this file; no npm install needed to run.
+
+Node 18+ is required (uses built-in `fetch`). `keytar` is optional; without it, tokens fall back to a `0600` file.
+
+## Install (for the user)
+
+```bash
+# Claude Code
+git clone <this-repo-url> ~/.claude/skills/wiznote-api
+
+# Cursor
+git clone <this-repo-url> .cursor/skills/wiznote-api
+```
+
+Optional (recommended, enables OS Keychain):
+```bash
+cd ~/.claude/skills/wiznote-api && npm run setup
+```
+
+## First-time login (interactive, once per machine)
+
+Tell the user to run this **in their own terminal** — never accept a password in chat:
+
+```bash
+node ~/.claude/skills/wiznote-api/scripts/wiz.js login
+```
+
+The password is exchanged for a `token` via the WizNote account server and immediately discarded. Only the token is persisted:
+
+1. **OS Keychain** (macOS Keychain / Windows Credential Manager / libsecret) via `keytar` — preferred
+2. `~/.config/wiznote/session.json` (mode `0600`) — fallback
+
+Non-secret metadata (`userId`, `kbGuid`, `kbServer`) always goes to the config file.
+
+## Using the API from code
+
+Inside the skill folder, import the modules with a relative path:
 
 ```js
-import { WizClient } from 'wiznote-sdk'
+import { WizClient } from './src/index.js'   // when your script is at skill root
+// or, from an arbitrary path:
+import { WizClient } from '/absolute/path/to/wiznote-api/src/index.js'
 
-// 1. Load from OS Keychain / env / config file (recommended for scripts)
 const wiz = await WizClient.fromStored()
-
-// 2. Or interactive login (persists to keychain on success)
-const wiz = await WizClient.login({ userId: 'a@b.com', password: '***' })
-
 const notes = await wiz.kb.getCategoryNotes({ category: '', start: 0, count: 20 })
 ```
 
-## Credential handling — READ THIS FIRST
+If you're writing a script that the user will run, put it in `scripts/` and reference `../src/index.js`.
 
-**Never** put a WizNote password into code, memory, `CLAUDE.md`, chat logs, or a git commit.
-Password is exchanged for a `token` on first login, and only the token is stored.
+## Credential resolution order (`resolveCredentials`)
 
-Resolution order (`resolveCredentials()`):
+1. Explicit args to `WizClient`
+2. Environment: `WIZ_TOKEN`, `WIZ_KB_GUID`, `WIZ_KB_SERVER`, `WIZ_USER`
+3. OS Keychain
+4. `~/.config/wiznote/session.json`
 
-1. Explicit args passed to `WizClient`
-2. Environment variables: `WIZ_TOKEN`, `WIZ_KB_GUID`, `WIZ_KB_SERVER`, `WIZ_USER`
-3. **OS Keychain** via `keytar` (macOS Keychain / Windows Credential Manager / libsecret) — preferred
-4. `~/.config/wiznote/session.json` — non-secret metadata (`userId`, `kbGuid`, `kbServer`).
-   Token is only written here as a fallback when keytar is unavailable, with mode `0600`.
-
-If you get "WizNote token not found", instruct the user to run `wiz login` (interactive) — do NOT ask them to paste the password into the chat.
-
-See [references/credentials.md](skill/references/credentials.md) for the full rationale and threat model.
+If `WizClient.fromStored()` throws "token not found", instruct the user to run `wiz login`. **Do NOT prompt for the password inside the chat.** Full rationale: [skill/references/credentials.md](skill/references/credentials.md).
 
 ## API surface
 
-Two clients on `wiz`:
+`wiz.account` — `AccountServerApi`:
+`login({userId,password})`, `logout({token})`, `keepTokenAlive({token})`, `getUserInfo({token})`, `getUserAvatar({userGuid,token})`.
 
-- `wiz.account` — `AccountServerApi` (login, logout, token, user info, avatar)
-- `wiz.kb` — `KnowledgeBaseApi` (notes, categories, tags, resources, search)
-
-Every `kb.*` call reads `kbGuid` and `token` from the client — you only pass the operation-specific data.
+`wiz.kb` — `KnowledgeBaseApi`:
 
 ### Notes
-
 | Method | Endpoint | Purpose |
 |---|---|---|
-| `kb.getNoteInfo(docGuid)` | `GET /ks/note/info/:kb/:doc` | metadata only |
+| `kb.getNoteInfo(docGuid)` | `GET /ks/note/info/:kb/:doc` | metadata |
 | `kb.getNoteContent(docGuid, { downloadInfo, downloadData })` | `GET /ks/note/download/:kb/:doc` | full HTML + resources |
-| `kb.getCategoryNotes({ category, start, count, withAbstract, orderBy, ascending })` | `GET /ks/note/list/category/:kb` | list under a folder |
-| `kb.createNote({ title, category, owner, html, type })` | `POST /ks/note/create/:kb` | create; `type='document'` or `'lite/markdown'` |
-| `kb.updateNote(docGuid, { html, title, type })` | `PUT /ks/note/save/:kb/:doc` | content update |
+| `kb.getCategoryNotes({ category, start, count, withAbstract, orderBy, ascending })` | `GET /ks/note/list/category/:kb` | list under folder |
+| `kb.createNote({ title, category, owner, html, type })` | `POST /ks/note/create/:kb` | `type='document'` \| `'lite/markdown'` |
+| `kb.updateNote(docGuid, { html, title, type })` | `PUT /ks/note/save/:kb/:doc` | content |
 | `kb.updateNoteInfo(docGuid, { title, tags, category })` | `POST /ks/note/upload/:kb/:doc` | metadata (⚠️ `category` = move) |
 | `kb.deleteNote(docGuid)` | `DELETE /ks/note/delete/:kb/:doc` | |
 | `kb.copyNote(docGuid, { targetKbGuid, targetCategory })` | `POST /ks/note/copy/:kb/:doc` | |
-| `kb.searchNote({ ss })` | `GET /ks/note/search/:kb` | full-text search |
+| `kb.searchNote({ ss })` | `GET /ks/note/search/:kb` | full-text |
 
 ### Categories
-
 | Method | Endpoint |
 |---|---|
 | `kb.getCategories()` | `GET /ks/category/all/:kb` |
@@ -69,7 +92,6 @@ Every `kb.*` call reads `kbGuid` and `token` from the client — you only pass t
 | `kb.renameCategory({ category, newCategory })` | `PUT /ks/category/rename/:kb` |
 
 ### Tags
-
 | Method | Endpoint |
 |---|---|
 | `kb.getAllTags()` | `GET /ks/tag/all/:kb` |
@@ -80,7 +102,6 @@ Every `kb.*` call reads `kbGuid` and `token` from the client — you only pass t
 | `kb.deleteTag(tagGuid)` | `DELETE /ks/tag/delete/:kb/:tag` |
 
 ### Resources
-
 ```js
 const form = new FormData()
 form.append('file', blob, 'image.png')
@@ -89,22 +110,21 @@ await wiz.kb.uploadImage(docGuid, form)
 
 ## Error handling
 
-All non-`returnCode:200` responses throw `WizApiError` with `.code` and `.externCode`.
+Non-200 `returnCode` throws `WizApiError` with `.code` / `.externCode`.
+`kbGuid is not match` → note was moved; clear local `docGuid` and treat as local-only.
+Auth expired → `wiz.account.keepTokenAlive({ token })`; if it fails, re-run `wiz login`.
 
-- `kbGuid is not match` — note was moved to another KB; treat as local-only, clear `docGuid`.
-- Auth expired — call `wiz.account.keepTokenAlive({ token })`; if it fails, `wiz login` again.
+## Verify the install (verification steps)
 
-## CLI (verification)
+Run these in the user's terminal and report status back:
 
+```bash
+node ~/.claude/skills/wiznote-api/scripts/wiz.js whoami   # prints userId/kbGuid/kbServer
+node ~/.claude/skills/wiznote-api/scripts/wiz.js ls       # first page of root notes
 ```
-wiz login
-wiz whoami
-wiz ls
-wiz search hello
-wiz cat <docGuid>
-wiz logout
-```
+
+If both succeed, the skill is ready.
 
 ## Full protocol reference
 
-See [skill/references/api.md](skill/references/api.md) for URL/field/param details of every endpoint (language-agnostic, use it if you call WizNote from anything other than this SDK).
+Language-agnostic URL / field / curl reference: [skill/references/api.md](skill/references/api.md).

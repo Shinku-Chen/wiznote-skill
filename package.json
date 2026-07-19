@@ -1,40 +1,15 @@
 {
-  "name": "wiznote-sdk",
+  "private": true,
+  "name": "wiznote-skill",
   "version": "0.1.0",
-  "description": "WizNote (为知笔记) REST API SDK + AI Skill. Minimal, dependency-light, keychain-first credential handling.",
+  "description": "Claude Code / Cursor skill for WizNote (为知笔记) REST API. Install by cloning into your agent's skills directory.",
   "type": "module",
-  "main": "src/index.js",
-  "exports": {
-    ".": "./src/index.js",
-    "./credentials": "./src/credentials.js"
-  },
-  "bin": {
-    "wiz": "bin/wiz.js"
-  },
-  "engines": {
-    "node": ">=18"
-  },
-  "files": [
-    "src",
-    "bin",
-    "skill",
-    "SKILL.md",
-    "README.md",
-    "LICENSE"
-  ],
+  "engines": { "node": ">=18" },
   "scripts": {
-    "example": "node examples/basic.js"
+    "setup": "npm i --no-save keytar || echo 'keytar install failed — SDK will fall back to config-file storage'"
   },
   "optionalDependencies": {
     "keytar": "^7.9.0"
   },
-  "keywords": [
-    "wiznote",
-    "为知笔记",
-    "sdk",
-    "ai-skill",
-    "claude-code",
-    "cursor"
-  ],
   "license": "MIT"
 }
