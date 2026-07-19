@@ -216,11 +216,16 @@ export async function createCollaborationNote (wiz, {
       returnFullResult: true
     })
   const docGuid = createRes.result?.docGuid
-  const editorToken = createRes.editor?.editorToken
-  if (!docGuid || !editorToken) {
+  if (!docGuid) {
     throw new Error(`create collaboration note failed: ${JSON.stringify(createRes)}`)
   }
   if (markdown.trim()) {
+    // create-note REST 返回的 editorToken 对 WS 握手无效,必须再走
+    // /ks/note/{kb}/{doc}/tokens 换发一个 WS 有效 token;否则文档停在 v:0(空壳)。
+    const tokenRes = await getCollaborationToken({
+      kbServer: wiz.kbServer, kbGuid: wiz.kbGuid, docGuid, token: wiz.token
+    })
+    const editorToken = tokenRes?.editorToken || tokenRes
     const { blocks, extras } = markdownToBlocks(markdown)
     await writeCollaborationBlocks({
       kbServer: wiz.kbServer, kbGuid: wiz.kbGuid, docGuid,
@@ -228,7 +233,7 @@ export async function createCollaborationNote (wiz, {
       blocks, extras, version: 0
     })
   }
-  return { docGuid, editorToken, title, category }
+  return { docGuid, title, category }
 }
 
 export async function updateCollaborationNote (wiz, { docGuid, markdown, title }) {
