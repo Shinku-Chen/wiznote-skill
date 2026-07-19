@@ -46,6 +46,16 @@ export class KnowledgeBaseApi {
     })
   }
 
+  /**
+   * Reorder folders. `positions` is an object mapping category path → sort key.
+   * Example: { '/My Notes/': 0, '/Work/': 1, '/Archive/': 2 }.
+   */
+  sortCategories (positions) {
+    return execRequest('PUT', this._kb(`/ks/category/sort/${this.kbGuid}`), {
+      body: positions, token: this._t()
+    })
+  }
+
   // ── Notes ───────────────────────────────────────────────────────────────
 
   getNoteInfo (docGuid) {
@@ -210,73 +220,118 @@ export class KnowledgeBaseApi {
   }
 
   // ── Comments ───────────────────────────────────────────────────────────
+  // Paths per official docs (was broken with fabricated /ks/comment/list|create paths):
+  //   GET    /ks/note/comments/:kb/:doc                     list
+  //   POST   /ks/comment/add/:kb/:doc      body {body,…}    create (field is `body`, not `text`)
+  //   DELETE /ks/comment/delete/:kb/:doc   ?sn=<n>          delete by sn
+  //   GET    /ks/note/comments/count/:kb/:doc               count only
 
-  getComments (docGuid) {
+  getComments (docGuid, { extra = false } = {}) {
     return execRequest('GET',
-      this._kb(`/ks/comment/list/${this.kbGuid}/${docGuid}`),
-      { query: { clientType: 'web', clientVersion: '4.0' }, token: this._t() })
+      this._kb(`/ks/note/comments/${this.kbGuid}/${docGuid}`),
+      { query: { extra: extra ? 'true' : 'false', clientType: 'web', clientVersion: '4.0' }, token: this._t() })
   }
 
-  addComment (docGuid, text) {
+  /** @param {string} body  Comment text (WizNote calls it `body`). */
+  addComment (docGuid, body) {
     return execRequest('POST',
-      this._kb(`/ks/comment/create/${this.kbGuid}/${docGuid}`),
+      this._kb(`/ks/comment/add/${this.kbGuid}/${docGuid}`),
       {
-        body: { text, docGuid, kbGuid: this.kbGuid },
+        body: { kbGuid: this.kbGuid, docGuid, body },
         query: { clientType: 'web', clientVersion: '4.0' },
         token: this._t()
       })
   }
 
-  deleteComment (docGuid, commentGuid) {
+  /** @param {number|string} sn  The comment's `sn` (sequence) — returned in the list. */
+  deleteComment (docGuid, sn) {
     return execRequest('DELETE',
-      this._kb(`/ks/comment/delete/${this.kbGuid}/${docGuid}/${commentGuid}`),
-      { token: this._t() })
+      this._kb(`/ks/comment/delete/${this.kbGuid}/${docGuid}`),
+      { query: { sn, clientType: 'web', clientVersion: '4.0' }, token: this._t() })
+  }
+
+  getCommentCount (docGuid) {
+    return execRequest('GET',
+      this._kb(`/ks/note/comments/count/${this.kbGuid}/${docGuid}`),
+      { query: { clientType: 'web', clientVersion: '4.0' }, token: this._t() })
   }
 
   // ── Note history / versions ────────────────────────────────────────────
+  // Official: GET /ks/history/list/:kb/:doc?objType=document|attachment&objGuid=<guid>
+  // (previous impl used non-existent /ks/note/history and /ks/note/version paths.)
 
-  getNoteHistory (docGuid) {
+  getNoteHistory (docGuid, { objType = 'document', objGuid } = {}) {
     return execRequest('GET',
-      this._kb(`/ks/note/history/${this.kbGuid}/${docGuid}`),
-      { query: { clientType: 'web', clientVersion: '4.0' }, token: this._t() })
-  }
-
-  getNoteVersion (docGuid, versionId) {
-    return execRequest('GET',
-      this._kb(`/ks/note/version/${this.kbGuid}/${docGuid}/${versionId}`),
-      { query: { clientType: 'web', clientVersion: '4.0' }, token: this._t() })
-  }
-
-  // ── Sharing ────────────────────────────────────────────────────────────
-
-  /**
-   * @param {'read'|'edit'} access
-   * @param {number} expireDays  0 = never expires
-   */
-  shareNote (docGuid, { access = 'read', expireDays = 30 } = {}) {
-    return execRequest('POST',
-      this._kb(`/ks/share/create/${this.kbGuid}/${docGuid}`),
+      this._kb(`/ks/history/list/${this.kbGuid}/${docGuid}`),
       {
-        body: {
-          docGuid,
-          kbGuid: this.kbGuid,
-          access,
-          expire: expireDays > 0 ? expireDays * 86400 : 0
-        },
-        token: this._t()
+        query: { objType, objGuid: objGuid || docGuid, clientType: 'web', clientVersion: '4.0' },
+        token: this._t(), returnFullResult: true
       })
   }
 
-  listShares () {
-    return execRequest('GET',
-      this._kb(`/ks/share/list/${this.kbGuid}`),
-      { token: this._t() })
+  /** History of a specific attachment (per-object timeline). */
+  getAttachmentHistory (docGuid, attGuid) {
+    return this.getNoteHistory(docGuid, { objType: 'attachment', objGuid: attGuid })
   }
 
-  cancelShare (shareId) {
+  // ── Favorites (likes) ──────────────────────────────────────────────────
+  // GET/POST/DELETE /ks/favor/:kb/:doc
+
+  listFavors (docGuid) {
+    return execRequest('GET',
+      this._kb(`/ks/favor/${this.kbGuid}/${docGuid}`),
+      { query: { clientType: 'web', clientVersion: '4.0' }, token: this._t() })
+  }
+
+  addFavor (docGuid) {
+    return execRequest('POST',
+      this._kb(`/ks/favor/${this.kbGuid}/${docGuid}`),
+      { query: { clientType: 'web', clientVersion: '4.0' }, token: this._t() })
+  }
+
+  removeFavor (docGuid) {
     return execRequest('DELETE',
-      this._kb(`/ks/share/delete/${this.kbGuid}/${shareId}`),
-      { token: this._t() })
+      this._kb(`/ks/favor/${this.kbGuid}/${docGuid}`),
+      { query: { clientType: 'web', clientVersion: '4.0' }, token: this._t() })
+  }
+
+  // ── Note abstract (thumbnail image) ───────────────────────────────────
+
+  /**
+   * Fetch the note's thumbnail image (PNG). Some notes don't have one — this
+   * returns null on 404 instead of throwing.
+   * @returns {Promise<{buffer: Buffer, contentType: string}|null>}
+   */
+  async getNoteAbstract (docGuid) {
+    const url = this._kb(`/ks/note/abstract/${this.kbGuid}/${docGuid}`) +
+      '?clientType=web&clientVersion=4.0'
+    const res = await fetch(url, { headers: { 'X-Wiz-Token': this._t() } })
+    if (res.status === 404) return null
+    if (!res.ok) throw new Error(`abstract fetch failed: HTTP ${res.status}`)
+    return {
+      buffer: Buffer.from(await res.arrayBuffer()),
+      contentType: res.headers.get('content-type') || 'application/octet-stream'
+    }
+  }
+
+  // ── Unified object download ───────────────────────────────────────────
+
+  /**
+   * Generic download endpoint that works for document / attachment / resource /
+   * abstract via `objType`. Returns a Buffer.
+   *
+   * @param {string} docGuid
+   * @param {{objType: 'document'|'attachment'|'resource'|'abstract', objId?: string}} opts
+   */
+  async downloadObject (docGuid, { objType, objId } = {}) {
+    if (!objType) throw new Error('downloadObject: objType required')
+    const url = this._kb(`/ks/object/download/${this.kbGuid}/${docGuid}`) +
+      `?objType=${encodeURIComponent(objType)}` +
+      (objId ? `&objId=${encodeURIComponent(objId)}` : '') +
+      '&clientType=web&clientVersion=4.0'
+    const res = await fetch(url, { headers: { 'X-Wiz-Token': this._t() } })
+    if (!res.ok) throw new Error(`object download failed: HTTP ${res.status}`)
+    return Buffer.from(await res.arrayBuffer())
   }
 
   // ── Attachments (first-class file attachments) ─────────────────────────

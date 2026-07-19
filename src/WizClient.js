@@ -126,6 +126,30 @@ export class WizClient {
     return attachAndLink(this, docGuid, items, opts)
   }
 
+  // ── Sharing (public/team share links — AS domain) ─────────────────────
+
+  /** Create a share link. Returns `{shareId, shareUrl, …}`. */
+  createShare ({ docGuid, password, readCountLimit, expiredAt, friends } = {}) {
+    return this.account.createShare({
+      token: this.token, kbGuid: this.kbGuid,
+      docGuid, password, readCountLimit, expiredAt, friends
+    })
+  }
+  /** Look up shares — no args = list yours; `{docGuid}` = fetch that doc's share. */
+  listShares (opts = {}) {
+    return this.account.listShares({
+      token: this.token, kbGuid: this.kbGuid, ...opts
+    })
+  }
+  /** Stop a share by id. */
+  cancelShare (shareId) { return this.account.cancelShare({ token: this.token, shareId }) }
+  /** Modify an existing share (password / expiry / read limit / friends). */
+  updateShare (shareId, patch) { return this.account.updateShare({ token: this.token, shareId, ...(patch || {}) }) }
+  /** Read the shared content. */
+  getShare (shareId) { return this.account.getShare({ token: this.token, shareId }) }
+  /** Save someone's shared note into your own kb. */
+  cloneShare (shareId) { return this.account.cloneShare({ token: this.token, shareId }) }
+
   // ── Markdown notes (type='lite/markdown') ────────────────────────────
   // WizNote's markdown editor requires a full <!doctype html>…<pre>…</pre>
   // shell; raw markdown alone or the document-note wrapper renders blank.

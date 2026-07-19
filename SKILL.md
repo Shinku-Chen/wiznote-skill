@@ -109,7 +109,8 @@ If `WizClient.fromStored()` throws "token not found", instruct the user to run `
 | `kb.getCategories()` | `GET /ks/category/all/:kb` |
 | `kb.createCategory({ parent, child, pos })` | `POST /ks/category/create/:kb` |
 | `kb.deleteCategory({ category })` | `DELETE /ks/category/delete/:kb` |
-| `kb.renameCategory({ category, newCategory })` | `PUT /ks/category/rename/:kb` |
+| `kb.renameCategory({ from, to })` | `PUT /ks/category/rename/:kb` |
+| `kb.sortCategories({ '/A/':0, '/B/':1, … })` | `PUT /ks/category/sort/:kb` |
 
 ### Tags
 | Method | Endpoint |
@@ -130,22 +131,41 @@ If `WizClient.fromStored()` throws "token not found", instruct the user to run `
 ### Comments
 | Method | Endpoint |
 |---|---|
-| `kb.getComments(docGuid)` | `GET /ks/comment/list/:kb/:doc` |
-| `kb.addComment(docGuid, text)` | `POST /ks/comment/create/:kb/:doc` |
-| `kb.deleteComment(docGuid, commentGuid)` | `DELETE /ks/comment/delete/:kb/:doc/:c` |
+| `kb.getComments(docGuid, {extra})` | `GET /ks/note/comments/:kb/:doc` |
+| `kb.addComment(docGuid, body)` | `POST /ks/comment/add/:kb/:doc` (body field is `body`, not `text`) |
+| `kb.deleteComment(docGuid, sn)` | `DELETE /ks/comment/delete/:kb/:doc?sn=…` |
+| `kb.getCommentCount(docGuid)` | `GET /ks/note/comments/count/:kb/:doc` |
 
 ### History / versions
 | Method | Endpoint |
 |---|---|
-| `kb.getNoteHistory(docGuid)` | `GET /ks/note/history/:kb/:doc` |
-| `kb.getNoteVersion(docGuid, versionId)` | `GET /ks/note/version/:kb/:doc/:v` |
+| `kb.getNoteHistory(docGuid, {objType,objGuid})` | `GET /ks/history/list/:kb/:doc?objType=document|attachment&objGuid=…` |
+| `kb.getAttachmentHistory(docGuid, attGuid)` | shortcut for `getNoteHistory(doc, {objType:'attachment', objGuid:attGuid})` |
 
-### Sharing
+### Favorites (点赞)
 | Method | Endpoint |
 |---|---|
-| `kb.shareNote(docGuid, { access:'read'\|'edit', expireDays })` | `POST /ks/share/create/:kb/:doc` (expireDays=0 → 永久) |
-| `kb.listShares()` | `GET /ks/share/list/:kb` |
-| `kb.cancelShare(shareId)` | `DELETE /ks/share/delete/:kb/:shareId` |
+| `kb.listFavors(docGuid)` | `GET /ks/favor/:kb/:doc` — `{favorStatus, favorUsers[], favorCount}` |
+| `kb.addFavor(docGuid)` | `POST /ks/favor/:kb/:doc` |
+| `kb.removeFavor(docGuid)` | `DELETE /ks/favor/:kb/:doc` |
+
+### Thumbnail / abstract
+`kb.getNoteAbstract(docGuid)` → `{buffer, contentType}` or `null` (returns `null` on 404 for text-only notes).
+
+### Unified object download
+`kb.downloadObject(docGuid, {objType, objId?})` → `Buffer`. Handles `objType: 'resource'|'attachment'` well; `'document'` and `'abstract'` may 500 for notes without those objects. Prefer the dedicated `downloadResource` / `downloadAttachment` for the common cases.
+
+### Sharing (public/team share links — LIVES ON AS, not KS)
+Sharing endpoints hit the Account Server (`https://as.wiz.cn` or your on-premise AS). WizClient wraps them so you don't hand-manage the host:
+
+| Method | Endpoint |
+|---|---|
+| `wiz.createShare({docGuid, password?, readCountLimit?, expiredAt?, friends?})` | `POST /share/api/shares` — returns `{shareId, shareUrl, …}` |
+| `wiz.listShares({page?, size?, docGuid?})` | `GET /share/api/shares` — omit args to list all; pass `docGuid` for one note |
+| `wiz.getShare(shareId)` | `GET /share/api/shares/:shareId` |
+| `wiz.updateShare(shareId, {password?, readCountLimit?, expiredAt?, friends?})` | `PUT /share/api/shares/:shareId` |
+| `wiz.cancelShare(shareId)` | `DELETE /share/api/shares/:shareId` |
+| `wiz.cloneShare(shareId)` | `GET /share/api/shares/:shareId/clone` — save someone's share to your kb |
 
 ### Resources (images and files embedded in note body)
 
