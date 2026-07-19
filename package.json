@@ -1,0 +1,40 @@
+{
+  "name": "wiznote-sdk",
+  "version": "0.1.0",
+  "description": "WizNote (为知笔记) REST API SDK + AI Skill. Minimal, dependency-light, keychain-first credential handling.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./credentials": "./src/credentials.js"
+  },
+  "bin": {
+    "wiz": "bin/wiz.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "src",
+    "bin",
+    "skill",
+    "SKILL.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "example": "node examples/basic.js"
+  },
+  "optionalDependencies": {
+    "keytar": "^7.9.0"
+  },
+  "keywords": [
+    "wiznote",
+    "为知笔记",
+    "sdk",
+    "ai-skill",
+    "claude-code",
+    "cursor"
+  ],
+  "license": "MIT"
+}
