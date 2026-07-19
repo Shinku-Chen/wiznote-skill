@@ -51,15 +51,19 @@ export class WizClient {
       get: (target, prop) => {
         const orig = target[prop]
         if (typeof orig !== 'function') return orig
-        return async (...args) => {
-          try {
-            return await orig.apply(target, args)
-          } catch (err) {
+        return (...args) => {
+          let result
+          try { result = orig.apply(target, args) }
+          catch (err) { throw err }
+          // Sync methods (URL builders etc.) pass through unwrapped — else
+          // callers get a Promise where a plain string is expected.
+          if (!result || typeof result.then !== 'function') return result
+          return result.catch(async err => {
             if (isAuthError(err) && await this._tryReauth()) {
-              return await orig.apply(target, args)
+              return orig.apply(target, args)
             }
             throw err
-          }
+          })
         }
       }
     })
