@@ -254,6 +254,60 @@ Low-level: `wrapMarkdown(md)` returns the string body suitable for `kb.createNot
 
 CLI: `wiz md new "<title>" -f md.md [--category=/x/]`, `wiz md read <docGuid>`, `wiz md update <docGuid> -f md.md [--title="…"]`.
 
+### Embedding images / media in a `lite/markdown` note
+
+WizNote's markdown editor renders `![alt](index_files/<name>)` — the **same
+relative reference** its own editor writes when a user drags an image in. To
+make this resolve, three things must line up (probed 2026-07-19 against
+`vipkshttps14.wiz.cn`):
+
+1. **Upload via `kb.uploadResource(docGuid, buffer, filename)`.** The server
+   returns `{ name: '<timestamp-slug>[.ext]', url: 'index_files/<name>' }`.
+   For images (png/jpg/…) the extension is preserved; for audio/zip/etc.
+   the server drops the extension.
+2. **Reference the resource in the markdown body as `![alt](index_files/<name>)`.**
+   Use `r.name` verbatim (NOT the original filename you passed) — the server
+   slug is what the client resolves against the manifest.
+3. **Register `r.name` into the note's `resources[]` array in the follow-up
+   `kb.updateNote(...)` call.** Merge with anything already on the note;
+   never send `resources: []` on an update unless you really want to strip
+   everything. Without this the manifest is empty and the reference resolves
+   to nothing.
+
+```js
+const doc = await wiz.createMarkdownNote({ title: 'x', markdown: 'seed', category: '/My Notes/' })
+const buf = await fs.readFile('photo.png')
+const r = await wiz.kb.uploadResource(doc.docGuid, buf, 'photo.png')
+
+const detail = await wiz.kb.getNoteContent(doc.docGuid, { downloadInfo: 1, downloadData: 1 })
+const existing = (detail.resources || []).map(x => x.name)
+
+const md = `# photo\n\n![photo](index_files/${r.name})\n`
+await wiz.kb.updateNote(doc.docGuid, {
+  kbGuid: wiz.kbGuid, docGuid: doc.docGuid,
+  html: wrapMarkdown(md),
+  url: '', tags: '', author: wiz.userId,
+  resources: [...new Set([...existing, r.name])]     // ← MUST include the new slug
+})
+```
+
+**Do NOT** use `getNoteContent().resources[i].url` (the absolute signed URL)
+in the markdown body — those signatures expire in ~2h (`wiz_es` query param),
+after which the image goes 404 for the reader. The `index_files/…` relative
+form is stable as long as the resource is in the manifest.
+
+**Audio/video (`<audio controls src="index_files/…">` inline HTML) is unreliable:**
+non-image uploads come back without an extension, so the client can't guess
+the MIME. If you must embed audio, prefer a `document`-type note (whose HTML
+editor handles this via `<audio>` and per-note resource routing), or fall
+back to a plain markdown download link `[audio.wav](index_files/…)`.
+
+**For downloadable attachments** in a `lite/markdown` note (files that appear
+in the WizNote attachment panel), upload via `kb.uploadAttachment(...)` and
+link with `[filename](wiz.kb.getAttachmentUrl(docGuid, attGuid))`. Clicks
+work inside authenticated WizNote clients; a plain browser tab against that
+URL 401s (needs `X-Wiz-Token`).
+
 ## Collaboration notes (modern WizNote default)
 
 Modern WizNote creates new notes as **collaboration notes** by default: content is a JSON `blocks` array served over WebSocket (sharejs JSONv1), not HTML. This skill supports them via Markdown ↔ blocks conversion.
