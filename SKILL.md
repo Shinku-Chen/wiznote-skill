@@ -337,6 +337,42 @@ Supported Markdown constructs (write + read):
 
 Not yet supported: formula/audio/drawio/encrypted/webpage embed blocks (roundtrip only).
 
+### Media embeds in collab notes — schema known, upload unsolved
+
+Reverse-engineered from a client-inserted embed (2026-07-19). Collab notes
+store media as `embed` blocks with `src` **content-addressed by hash**:
+
+```json
+{
+  "id": "_mG1iwFWx",
+  "type": "embed",
+  "embedType": "image",           // "image" | "audio" | "office" (generic file: zip/pdf/doc/…)
+  "align": "center",
+  "quoted": false,
+  "embedData": {
+    "src":         "<base64url(sha256(bytes))>.<ext>",
+    "fileName":    "<original user-facing name>",
+    "fileSize":    <bytes>,
+    "fileType":    "<MIME>",       // "image/jpeg" | "audio/wav" | "application/x-zip-compressed"
+    "previewType": "card"
+  }
+}
+```
+
+**Verified**: hashing `audio.wav` (8044 B) yields the exact `src` the WizNote
+client wrote. Compute with:
+```js
+const src = crypto.createHash('sha256').update(buf).digest('base64')
+  .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') + '.' + ext
+```
+(see `scripts/probe-hash.mjs`).
+
+**Upload endpoint still unsolved.** `POST /editor/:kb/:doc/resources` (multipart) returns 403 for every auth combo tried; `POST|PUT /editor/:kb/:doc/resources/<hash>.<ext>` (raw bytes) returns 500. The routes exist but the correct contract (WS binary frames? separate object-storage endpoint? extra header?) hasn't been found. Until we crack it, agents CANNOT programmatically embed new media into a collab note — refer users to drag&drop in the WizNote client.
+
+**Workarounds that DO work today for collab notes:**
+- **Attachments** via `kb.uploadAttachment(...)` — the attachment panel is note-type-agnostic; users see the file listed and can click to download in the client.
+- If the collab note already has a resource with the target hash (e.g. inserted earlier by the user), reference it in a new embed block via the schema above without re-uploading.
+
 CLI: `wiz collab new "<title>" -f md.md [--category=/x/] [--tags=a,b]`, `wiz collab read <docGuid>`, `wiz collab update <docGuid> -f md.md`.
 
 ## Error handling
