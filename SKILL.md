@@ -189,12 +189,24 @@ wiz res upload <docGuid> <file>... [--prepend] [--heading="..."]
 ```js
 const r = await wiz.kb.uploadResource(docGuid, await fs.readFile('pic.png'), 'pic.png')
 // r → { name: '1784451192606-tdt.png', url: 'index_files/1784451192606-tdt.png', ... }
+
+// CRITICAL: after uploading, you MUST register the server-issued name in the
+// note's `resources` array on the next updateNote call — else the resource is
+// invisible to other WizNote clients and no signed download URL is issued.
+await wiz.kb.updateNote(docGuid, {
+  kbGuid: wiz.kbGuid, docGuid,
+  html: `<div class="wiz-note-body"><div class="wiz-note-html">
+           <p><img src="${r.url}"></p>
+         </div></div>`,
+  url: '', tags: '', author: wiz.userId,
+  resources: [r.name]            // ← merge with anything already on the note
+})
 ```
 
 **Gotchas the SDK already handles for you, but worth knowing:**
 - Multipart field must be named `data` (not `file`); form MUST also carry sibling `kbGuid` + `docGuid` fields — else server returns `kbGuid is not match`.
-- WizNote replaces the display filename with a server slug (e.g. `1784451192606-tdt`). Use `r.url` verbatim in HTML; pass the original filename via `alt=` / `download=` for user-facing labels.
-- `getNoteContent().resources` returns **empty** for resources uploaded through `/ks/resource/upload/*`, even though the bytes are stored and downloadable. To enumerate, parse `<img src="index_files/...">` out of the note HTML. To fetch bytes by server-name: `GET /ks/object/download/:kb/:doc?objType=resource&objId=<name>` (needs `X-Wiz-Token`) or `GET /ks/note/view/:kb/:doc/index_files/<name>`.
+- WizNote replaces the display filename with a server slug (e.g. `1784451192606-tdt`); images keep their extension, others don't. Use `r.url` verbatim in HTML; pass the original filename via `alt=` for user-facing labels.
+- **The `resources` array in `updateNote` is what makes the resource *findable*.** Without it, `getNoteContent().resources` comes back empty, no signed URLs are minted, and other clients can't resolve `<img src="index_files/…">`. Once populated correctly, the server returns `resources[i].url` as an absolute signed URL that plain `fetch()` can hit (no `X-Wiz-Token` needed). `wiz.uploadAndEmbed` handles the merge automatically; if you call `kb.uploadResource` directly, do it yourself.
 
 CLI: `wiz res ls <docGuid>`, `wiz res get <docGuid> <name> [-o out]`, `wiz res all <docGuid> [-o dir] [--user]`. `--user` filters WizNote editor CSS/icons from bulk downloads on legacy notes.
 

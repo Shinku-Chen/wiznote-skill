@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { uploadAndEmbed } from '../src/embed.js'
 
 // Stand-in that captures kb calls and returns canned responses.
-function makeStubClient ({ existingHtml = '' } = {}) {
+function makeStubClient ({ existingHtml = '', existingResources = [] } = {}) {
   const uploads = []
   const updates = []
   return {
@@ -21,7 +21,11 @@ function makeStubClient ({ existingHtml = '' } = {}) {
         return { name: serverName, url: `index_files/${serverName}` }
       },
       async getNoteContent () {
-        return { html: existingHtml, info: { url: '', tags: '', author: 'stub@test' } }
+        return {
+          html: existingHtml,
+          info: { url: '', tags: '', author: 'stub@test' },
+          resources: existingResources
+        }
       },
       async updateNote (docGuid, payload) { updates.push({ docGuid, payload }) }
     }
@@ -116,4 +120,42 @@ test('uploadAndEmbed: rejects empty items or missing docGuid', async () => {
   const c = makeStubClient()
   await assert.rejects(() => uploadAndEmbed(c, '', ['x']), /docGuid required/)
   await assert.rejects(() => uploadAndEmbed(c, 'd', []), /non-empty array/)
+})
+
+test('uploadAndEmbed: registers new server names into note manifest', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'wiz-embed-'))
+  try {
+    writeFileSync(join(tmp, 'a.png'), Buffer.from('png'))
+    writeFileSync(join(tmp, 'b.wav'), Buffer.from('wav'))
+    const c = makeStubClient({
+      existingHtml: '<div class="wiz-note-body"><div class="wiz-note-html"><p>x</p></div></div>'
+    })
+    await uploadAndEmbed(c, 'd', [join(tmp, 'a.png'), join(tmp, 'b.wav')])
+    const resources = c.calls.updates[0].payload.resources
+    // Both server slugs must be in the manifest — otherwise other WizNote
+    // clients can't resolve the `index_files/…` refs.
+    assert.deepEqual(resources, ['srv-1.png', 'srv-2'])
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+})
+
+test('uploadAndEmbed: preserves pre-existing resources on subsequent uploads', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'wiz-embed-'))
+  try {
+    writeFileSync(join(tmp, 'a.png'), Buffer.from('png'))
+    const c = makeStubClient({
+      existingHtml: '<div class="wiz-note-body"><div class="wiz-note-html"><p>x</p></div></div>',
+      existingResources: [
+        { name: 'old-1.png' },
+        { name: 'old-2' }
+      ]
+    })
+    await uploadAndEmbed(c, 'd', [join(tmp, 'a.png')])
+    const resources = c.calls.updates[0].payload.resources
+    // Old resources must survive; the new upload must be appended once.
+    assert.deepEqual(resources, ['old-1.png', 'old-2', 'srv-1.png'])
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
 })

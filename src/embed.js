@@ -116,6 +116,16 @@ export async function uploadAndEmbed (wiz, docGuid, items, opts = {}) {
   const info = detail?.info || {}
   const html = splice(detail?.html, snippet, position)
 
+  // Register the new resources into the note's manifest. Without this the
+  // server keeps `resources` on the note empty, no signed URLs are issued,
+  // and other WizNote clients (desktop / mobile / web viewer) can't resolve
+  // the `index_files/…` refs when they open the note. Preserve any resources
+  // that were already on the note so we don't drop images from earlier edits.
+  const existing = Array.isArray(detail?.resources)
+    ? detail.resources.map(r => r?.name).filter(Boolean)
+    : []
+  const merged = [...new Set([...existing, ...uploaded.map(u => u.serverName)])]
+
   await wiz.kb.updateNote(docGuid, {
     kbGuid: wiz.kbGuid,
     docGuid,
@@ -123,7 +133,7 @@ export async function uploadAndEmbed (wiz, docGuid, items, opts = {}) {
     url: info.url || '',
     tags: info.tags || '',
     author: info.author || wiz.userId,
-    resources: []
+    resources: merged
   })
 
   return { docGuid, uploaded }
