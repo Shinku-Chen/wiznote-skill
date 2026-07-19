@@ -41,8 +41,11 @@ Windows / Linux 需要装编译工具链,见 [INSTALL.md](INSTALL.md)。
 ```bash
 wiz login              # 登录
 wiz whoami             # 查看当前账号
-wiz ls                 # 列出根目录笔记
-wiz ls /工作/          # 列出指定文件夹
+wiz ls                          # 根目录前 50 篇
+wiz ls /工作/                   # 指定文件夹前 50 篇
+wiz ls --count=200              # 一页拉 200 篇
+wiz ls --start=50               # 从第 51 篇开始
+wiz ls /工作/ --all             # 自动翻页拉完整个文件夹
 wiz search 关键词       # 搜笔记
 wiz cat <docGuid>      # 看笔记内容
 wiz tags               # 列出标签

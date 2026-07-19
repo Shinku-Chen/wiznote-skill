@@ -11,7 +11,11 @@ function usage () {
   login              Authenticate and store token (OS Keychain preferred)
   logout             Clear stored token
   whoami             Show current session
-  ls [category]      List notes in a category (default: root)
+  ls [category] [--start=N] [--count=N] [--all]
+                     List notes in a category. Default: root, count=50.
+                     --start=N   offset for pagination (default 0)
+                     --count=N   page size (default 50, max 1000)
+                     --all       auto-continue until exhausted
   cat <docGuid>      Print note content
   tags               List all tags
   categories         List category tree
@@ -61,15 +65,42 @@ async function main () {
         break
       }
       case 'ls': {
+        // Positional: [category]. Flags: --start=N --count=N --all
+        const flags = {}
+        const positional = []
+        for (const a of rest) {
+          const m = a.match(/^--([^=]+)(?:=(.*))?$/)
+          if (m) flags[m[1]] = m[2] === undefined ? true : m[2]
+          else positional.push(a)
+        }
+        const category = positional[0] || ''
+        const count = Math.max(1, Math.min(1000, parseInt(flags.count, 10) || 50))
+        const fetchAll = !!flags.all
+        let start = parseInt(flags.start, 10) || 0
+
         const wiz = await WizClient.fromStored()
-        const notes = await wiz.kb.getCategoryNotes({
-          category: rest[0] || '',
-          start: 0, count: 50,
-          withAbstract: false,
-          orderBy: 'modified', ascending: 'desc'
-        })
-        for (const n of notes || []) {
-          console.log(`${n.docGuid || n.guid}  ${n.title}  [${n.category}]`)
+        let total = 0
+        let lastStart = start
+        for (;;) {
+          const notes = await wiz.kb.getCategoryNotes({
+            category, start: lastStart, count,
+            withAbstract: false,
+            orderBy: 'modified', ascending: 'desc'
+          }) || []
+          for (const n of notes) {
+            console.log(`${n.docGuid || n.guid}  ${n.title}  [${n.category}]`)
+          }
+          total += notes.length
+          const done = notes.length < count
+          if (fetchAll && !done) {
+            lastStart += count
+            continue
+          }
+          console.error(`— ${total} shown (start=${start}, count=${count}${fetchAll ? ', --all' : ''})`)
+          if (!done && !fetchAll) {
+            console.error(`  more available: rerun with --start=${start + count}, or add --all to fetch everything`)
+          }
+          break
         }
         break
       }
