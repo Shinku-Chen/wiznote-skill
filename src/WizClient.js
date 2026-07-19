@@ -126,6 +126,48 @@ export class WizClient {
     return attachAndLink(this, docGuid, items, opts)
   }
 
+  // ── Multi-KB (personal + team knowledge bases) ────────────────────────
+
+  /** List every KB the current user can see (personal + team groups). */
+  listKbs () { return this.account.listKbs({ token: this.token }) }
+
+  /** Metadata for a specific KB (personal or team). */
+  getKb (kbGuid) { return this.account.getKb({ kbGuid: kbGuid || this.kbGuid, token: this.token }) }
+
+  /** KB descriptor (personal or team) — includes `kbServer`, `name`, `type`, `myWizEmail`, etc. */
+  getGroup (kbGuid) { return this.account.getGroup({ kbGuid: kbGuid || this.kbGuid, token: this.token }) }
+
+  /**
+   * Switch this client to a different KB (e.g. team kb) for subsequent kb.*
+   * calls. Team kbs may live on a different KS server — pass `kbServer`
+   * explicitly, or the client will look it up via `getGroup(kbGuid)`.
+   *
+   * @param {string} kbGuid  target KB
+   * @param {object} [opts]
+   * @param {string} [opts.kbServer]  KS host (skip auto-lookup if provided)
+   * @returns {Promise<{kbGuid, kbServer}>} the new binding
+   */
+  async switchKb (kbGuid, { kbServer } = {}) {
+    if (!kbGuid) throw new Error('switchKb: kbGuid required')
+    if (!kbServer) {
+      // Team kb → /as/user/groups/:kb has the KS host.
+      // Personal kb → the current kbServer stays put.
+      if (kbGuid === this.kbGuid) kbServer = this.kbServer
+      else {
+        try {
+          const group = await this.getGroup(kbGuid)
+          kbServer = group?.kbServer || group?.result?.kbServer
+        } catch {}
+      }
+    }
+    if (!kbServer) throw new Error(`switchKb: could not resolve kbServer for ${kbGuid}. Pass { kbServer } explicitly.`)
+    this.kbGuid = kbGuid
+    this.kbServer = kbServer
+    this._kbInner.kbGuid = kbGuid
+    this._kbInner.setBaseUrl(kbServer)
+    return { kbGuid, kbServer }
+  }
+
   // ── Sharing (public/team share links — AS domain) ─────────────────────
 
   /** Create a share link. Returns `{shareId, shareUrl, …}`. */

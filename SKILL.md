@@ -113,9 +113,25 @@ this skill.
 ## API surface
 
 `wiz.account` — `AccountServerApi`:
-`login({userId,password})`, `logout({token})`, `keepTokenAlive({token})`, `getUserInfo({token})`, `getUserAvatar({userGuid,token})`.
+`login({userId,password})`, `logout({token})`, `keepTokenAlive({token})`, `getUserInfo({token})`, `getUserAvatar({userGuid,token})`, `getMe({token})`, `listKbs({token})`, `getKb({kbGuid,token})`, `getGroup({kbGuid,token})`.
+
+### Multi-KB (personal + team knowledge bases)
+
+```js
+const kbs = await wiz.listKbs()               // [{kbGuid, noteCount, storageUsage, docVersion, …}]
+const info = await wiz.getKb()                // current kb; getKb(kbGuid) for another
+const group = await wiz.getGroup(kbGuid)      // {kbServer, name, type:'person'|'group', ...}
+
+// Switch this client to a team kb (kbServer auto-resolved via getGroup)
+await wiz.switchKb(teamKbGuid)
+// or pass kbServer explicitly to skip the lookup:
+await wiz.switchKb(teamKbGuid, { kbServer: 'https://groupks01.wiz.cn' })
+```
 
 `wiz.kb` — `KnowledgeBaseApi`:
+
+- `kb.getKbInfo()` — current KB's metadata: `noteCount`, `storageUsage/Limit`, `docVersion` / `attVersion` / `tagVersion` (for incremental sync), `uploadSizeLimit`, `deletedVersion`.
+  - Prefer this over the officially-documented `/ks/kb/:kb/document/count` — that endpoint is IP-whitelisted on the public server, and its `noteCount` is already in `getKbInfo()`.
 
 ### Notes
 | Method | Endpoint | Purpose |

@@ -42,17 +42,31 @@ export class AccountServerApi {
 
   /** GET /as/user/info — current-user info (name/email/quota/etc.) */
   async getMe ({ token }) {
-    return execRequest('GET', `${this.baseUrl}/as/user/info`, { token, returnFullResult: true })
+    return execRequest('GET', `${this.baseUrl}/as/user/info`, { token })
   }
 
-  /** GET /as/user/kb/info/all — every kb the user can see (personal + groups). */
+  /**
+   * GET /as/user/kb/info/all — every kb the user can see (personal + groups).
+   * Returns an array of `{kbGuid, noteCount, storageUsage, docVersion, …}`.
+   * Server response does NOT include `kbServer` — use `getGroup(kbGuid)` for
+   * a team kb to discover its KS host.
+   */
   async listKbs ({ token }) {
-    return execRequest('GET', `${this.baseUrl}/as/user/kb/info/all`, { token, returnFullResult: true })
+    return execRequest('GET', `${this.baseUrl}/as/user/kb/info/all`, { token })
   }
 
-  /** GET /as/user/kb/info/:kbGuid */
+  /** GET /as/user/kb/info/:kbGuid  — single-kb metadata (same shape as one entry from listKbs). */
   async getKb ({ kbGuid, token }) {
-    return execRequest('GET', `${this.baseUrl}/as/user/kb/info/${kbGuid}`, { token, returnFullResult: true })
+    return execRequest('GET', `${this.baseUrl}/as/user/kb/info/${kbGuid}`, { token })
+  }
+
+  /**
+   * GET /as/user/groups/:kbGuid  — group / KB descriptor. Returns `kbServer`
+   * (KS host), `type` ('person' | 'group'), `name`, `ownerGuid`, `isEncrypt`,
+   * `myWizEmail`, etc. Works for both personal and team kbs.
+   */
+  async getGroup ({ kbGuid, token }) {
+    return execRequest('GET', `${this.baseUrl}/as/user/groups/${kbGuid}`, { token })
   }
 
   // ── Sharing (public/team share links — LIVE ON AS, not KS) ────────────

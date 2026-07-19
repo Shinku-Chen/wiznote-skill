@@ -14,6 +14,23 @@ export class KnowledgeBaseApi {
   _kb (path) { return `${this.baseUrl}${path}` }
   _t () { return this.token }
 
+  // ── KB metadata ─────────────────────────────────────────────────────────
+
+  /**
+   * KB info — includes `noteCount`, `storageUsage`, `noteCountLimit`,
+   * `uploadSizeLimit`, several `docVersion` / `attVersion` / `tagVersion`
+   * counters (useful for incremental sync).
+   *
+   * Note: `/ks/kb/:kb/document/count` in the official docs is IP-whitelisted
+   * on the public server (returns "ip not in white ip list") — and its
+   * `noteCount` is already in this response. Prefer this endpoint.
+   */
+  getKbInfo () {
+    return execRequest('GET', this._kb(`/ks/kb/info/${this.kbGuid}`), {
+      query: { clientType: 'web', clientVersion: '4.0' }, token: this._t()
+    })
+  }
+
   // ── Categories ──────────────────────────────────────────────────────────
 
   getCategories () {
