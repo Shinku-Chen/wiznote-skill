@@ -137,7 +137,7 @@ export class WizClient {
   static async savePassword (userId, password) { return savePassword(userId, password) }
   static async clearStoredPassword (userId) { return clearStoredPassword(userId) }
 
-  static async login ({ userId, password, accountBaseUrl, endpoint, persist = true, savePassword: doSavePassword = false }) {
+  static async login ({ userId, password, accountBaseUrl, endpoint, persist = true, savePassword: doSavePassword = true }) {
     if (!userId || !password) throw new Error('login requires userId and password')
     const asUrl = accountBaseUrl || endpoint
     const account = new AccountServerApi({ baseUrl: asUrl })
@@ -155,7 +155,10 @@ export class WizClient {
       })
     }
     if (doSavePassword) {
-      await savePassword(userId, password)
+      // Password storage requires keytar. If unavailable, warn and continue
+      // rather than fail login — auto-reauth just won't work until keytar is installed.
+      try { await savePassword(userId, password) }
+      catch (e) { console.error(`[wiz] password not stored: ${e.message.split('\n')[0]}`) }
     }
     return new WizClient({
       userId,

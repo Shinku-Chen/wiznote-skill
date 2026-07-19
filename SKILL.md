@@ -71,15 +71,15 @@ If you're writing a script that the user will run, put it in `scripts/` and refe
 
 `WIZ_ENDPOINT` is a shortcut for on-premise: sets both `accountBaseUrl` and `kbServer` defaults to the same host.
 
-## Auto-reauth (opt-in password storage)
+## Auto-reauth (on by default)
 
-By default the SDK never stores the password — only the token, which has a ~15-minute TTL. When it expires, calls fail with `Invalid token` and the user must run `wiz login` again.
+WizNote tokens have a ~15-minute TTL. To avoid `Invalid token` errors after idle periods, `wiz login` **stores the password in OS Keychain by default** alongside the token. When any `wiz.kb.*` call fails with an auth-shaped error, the client silently re-logs in with the stored password and retries once — the caller sees success.
 
-Users who want silent re-login can **opt in**: `wiz login --save-password` (or `wiz save-password` post-login). The password is written to the OS Keychain (never a file), and `wiz.kb.*` calls transparently retry once after refreshing the token.
+Opt-out: `wiz login --no-save-password`, or turn off after the fact with `wiz forget-password`. `wiz save-password` re-enables it post-login.
 
-**Trade-off:** any process running as the same OS user can read the password back via keytar. Do not enable on shared machines or if your OS user account is not the sole trust boundary. Undo with `wiz forget-password`.
+**Trade-off (state this to the user before proceeding on their behalf):** Keychain is OS-encrypted and scoped per user account, so other OS users on the same machine can't read it. But **any process running as the same OS user** can pull the password back via keytar. On shared machines or non-trusted user environments, pass `--no-save-password`.
 
-AI assistants using this skill: **do not enable auto-reauth on behalf of the user without explicit consent** — describe the trade-off first.
+Password storage requires `keytar` (`npm run setup`). If keytar isn't available, `wiz login` logs a one-line warning and continues without storing the password — auto-reauth simply won't fire.
 
 If `WizClient.fromStored()` throws "token not found", instruct the user to run `wiz login`. **Do NOT prompt for the password inside the chat.** Full rationale: [skill/references/credentials.md](skill/references/credentials.md).
 

@@ -28,7 +28,9 @@ Cursor 用户改成 `.cursor/skills/wiznote-api`,Workbuddy 用户改成 `~/.work
 node ~/.claude/skills/wiznote-api/scripts/wiz.js login
 ```
 
-问账号密码,登录成功后 token 存进系统 Keychain(macOS Keychain / Windows 凭据管理器 / Linux libsecret)。之后 AI 直接用 token 调接口,永远看不到你的密码。
+问账号密码,登录成功后 **token 和密码都存进系统 Keychain**(macOS Keychain / Windows 凭据管理器 / Linux libsecret)。之后 AI 直接用 token 调接口,永远看不到你的密码;WizNote token ~15 分钟过期时,skill 会自动用密码悄悄续登,你无感。
+
+不想存密码?加 `--no-save-password`,只存 token,过期后再手动 `wiz login` 一次。
 
 想启用 Keychain 需要额外一步(可选,不装也能跑,自动降级到 `0600` 文件):
 
@@ -38,24 +40,23 @@ cd ~/.claude/skills/wiznote-api && npm run setup
 
 Windows / Linux 需要装编译工具链,见 [INSTALL.md](INSTALL.md)。
 
-## 自动续登(可选)
+## 自动续登(默认开启)
 
-WizNote 的 token 大约 **15 分钟**就过期,过期后调用会报 `Invalid token`,得再 `wiz login` 一次。
-
-如果你能接受**把密码也存进 Keychain**,可以让 skill 自动续登——token 过期时 skill 会用密码悄悄重新登录、更新 token、重试你的调用,你完全无感:
+WizNote 的 token 大约 **15 分钟**过期,skill 默认把密码也一起存进 Keychain,过期时自动续登、你无感。
 
 ```bash
-wiz login --save-password    # 登录时就开启
-wiz save-password            # 已经登录了,现在开启
-wiz forget-password          # 不想要了,关掉
+wiz login                    # 默认:token + 密码都存,自动续登
+wiz login --no-save-password # 只存 token,过期后要手动 wiz login
+wiz save-password            # 已登录的,现在开启自动续登
+wiz forget-password          # 关闭自动续登(清密码,token 保留)
 ```
 
-**权衡说明**:密码进 Keychain 是**加密存储**,同机不同用户读不到。但**同一 OS 账号下**跑的任何程序都能通过 keytar 读回来。共享机器 / 不放心的场景就别开。
+**权衡说明**:Keychain 是加密存储,同机不同 OS 用户读不到你的密码。但**同一 OS 账号下**跑的任何程序都能通过 keytar 读回来。共享机器 / 不放心的场景加 `--no-save-password`。
 
 ## 常用命令
 
 ```bash
-wiz login                        # 登录(加 --save-password 顺便开自动续登)
+wiz login                        # 登录(默认自动续登;加 --no-save-password 关闭)
 wiz whoami                       # 查看当前账号
 wiz ls                           # 根目录前 50 篇
 wiz ls /工作/                    # 指定文件夹前 50 篇

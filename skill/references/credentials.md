@@ -37,14 +37,15 @@ Password is **never** stored anywhere. `WizClient.login()` uses it once and disc
 4. If you need to demonstrate an authenticated call, use `await WizClient.fromStored()` and let the runtime resolve credentials — do not surface the token value.
 5. If a user provides a token in the chat for debugging, use it only in-memory and remind them to rotate it (`wiz logout && wiz login`).
 
-## Auto-reauth via stored password (opt-in)
+## Auto-reauth via stored password (on by default)
 
-By default the SDK follows the "password used once, never stored" rule. If the user explicitly wants the SDK to silently re-authenticate when the token expires, they can opt in:
+Since v0.2 the SDK stores the password in OS Keychain by default so the ~15-min token TTL doesn't cause `Invalid token` errors during normal use. Users can opt out:
 
 ```bash
-wiz login --save-password    # at login time
-wiz save-password            # after login (post-hoc)
-wiz forget-password          # disable
+wiz login                        # default: stores both token AND password
+wiz login --no-save-password     # skip password (safer, more manual)
+wiz save-password                # re-enable after the fact
+wiz forget-password              # disable (keeps token; only clears password)
 ```
 
 When enabled:
@@ -57,7 +58,7 @@ When enabled:
 - Password rotation on WizNote's side (via web UI) will cause reauth to fail; user must re-run `wiz login`
 - If keytar isn't installed, `savePassword` throws — we refuse to store passwords in the plain-text config file
 
-**AI-assistant rule:** never call `savePassword` on the user's behalf without explicit consent. State the trade-off (any local process running as the user can read it) and let them decide.
+**AI-assistant rule:** the default is to save the password because the ~15-min TTL makes any non-trivial automation unusable otherwise. But if the user's context suggests a shared or hostile environment (kiosks, corporate shared workstations, security-sensitive projects), remind them of `--no-save-password` before proceeding.
 
 ## Rotation & revocation
 
