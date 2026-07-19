@@ -191,7 +191,21 @@ export async function writeCollaborationBlocks (opts) {
         data: docData
       }
     })
-    await s.recv({ timeoutMs: 5000 }).catch(() => {})
+    // Wait for the server's ack of OUR op — the frame echoes back src/seq or
+    // carries `v: v+1`. Without this the WS is closed in `finally` before the
+    // create bytes finish flushing on a freshly-minted note, and the write
+    // never lands (doc stays at v:0). Time out generously; if the server
+    // never acks, do a follow-up fetch to force a round trip that guarantees
+    // our op reached the server side.
+    try {
+      await s.recv({
+        predicate: m => (m.a === 'op' && (m.src === src || m.v === v)) || m.v > v,
+        timeoutMs: 8000
+      })
+    } catch {
+      s.send({ a: 'f', c: opts.kbGuid, d: opts.docGuid, v: null })
+      await s.recv({ predicate: m => m.data !== undefined, timeoutMs: 5000 }).catch(() => {})
+    }
   } finally {
     s.close()
   }
