@@ -36,6 +36,8 @@ function usage () {
   attach get <docGuid> <attGuid> [-o out] Download attachment (stdout if no -o)
   attach rm  <docGuid> <attGuid>          Delete an attachment
   attach url <docGuid> <attGuid>          Print raw download URL (needs X-Wiz-Token header)
+  attach embed <docGuid> <file>...        Upload as attachment AND add a download
+                                          link into note body. [--prepend] [--heading=".."]
 
   res ls <docGuid>                        List a note's embedded resources (images/files)
   res get <docGuid> <name> [-o out]       Download one resource
@@ -424,6 +426,26 @@ async function main () {
             if (rest.length < 3) { console.error('usage: wiz attach url <docGuid> <attGuid>'); process.exit(1) }
             console.log(wiz.kb.getAttachmentUrl(rest[1], rest[2]))
             console.log('# Requires: X-Wiz-Token: <token>')
+            break
+          }
+          case 'embed': {
+            const flags = {}
+            const positional = []
+            for (const a of rest.slice(1)) {
+              const m = a.match(/^--([^=]+)(?:=(.*))?$/)
+              if (m) flags[m[1]] = m[2] === undefined ? true : m[2]
+              else positional.push(a)
+            }
+            if (positional.length < 2) { console.error('usage: wiz attach embed <docGuid> <file>... [--prepend] [--heading=".."]'); process.exit(1) }
+            const [docGuid, ...files] = positional
+            const r = await wiz.attachAndLink(docGuid, files, {
+              position: flags.prepend ? 'prepend' : 'append',
+              heading: flags.heading
+            })
+            for (const u of r.uploaded) {
+              console.log(`  ${u.name}  attGuid=${u.attGuid}  ${u.size}B`)
+            }
+            console.error(`— ${r.uploaded.length} attached and linked into ${docGuid}`)
             break
           }
           default:

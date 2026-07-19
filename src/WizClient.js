@@ -10,7 +10,7 @@ import {
   getCollaborationToken, fetchCollaborationContent,
   listCollaborationResources, downloadCollaborationResource
 } from './collaboration.js'
-import { uploadAndEmbed } from './embed.js'
+import { uploadAndEmbed, attachAndLink } from './embed.js'
 
 /**
  * High-level client. Two ways to construct:
@@ -112,6 +112,15 @@ export class WizClient {
    */
   uploadAndEmbed (docGuid, items, opts) {
     return uploadAndEmbed(this, docGuid, items, opts)
+  }
+
+  /**
+   * Upload local files as first-class attachments (they appear in the
+   * WizNote attachment panel) AND add a download link into the note body.
+   * See src/embed.js for options.
+   */
+  attachAndLink (docGuid, items, opts) {
+    return attachAndLink(this, docGuid, items, opts)
   }
 
   // ── Collaboration notes (require `ws` package; on-premise / modern WizNote) ──

@@ -12,4 +12,4 @@ export {
   getCollaborationToken, fetchCollaborationContent, writeCollaborationBlocks,
   listCollaborationResources, downloadCollaborationResource
 } from './collaboration.js'
-export { uploadAndEmbed } from './embed.js'
+export { uploadAndEmbed, attachAndLink } from './embed.js'

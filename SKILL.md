@@ -223,6 +223,14 @@ Endpoints follow the official docs at `https://www.wiz.cn/docs/restapi/ks.html`.
 
 CLI: `wiz attach ls|put|get|rm|url <docGuid> [...]`.
 
+**Attach + link into note body in one call:**
+```js
+await wiz.attachAndLink(docGuid, ['pkg.zip', 'audio.wav'], { heading: '📎 附件' })
+```
+Each file goes to the attachment panel (via `attachment/create`) and gets a `<a href="{rawUrl}" data-wiz-att-guid="…">name (size)</a>` block in the note body. CLI: `wiz attach embed <docGuid> <file>... [--prepend] [--heading="…"]`.
+
+The link's `href` is the raw KS URL — clicks resolve inside authenticated WizNote clients (they inject `X-Wiz-Token`); a plain browser tab against that URL will 401. Use `uploadAndEmbed` (resource channel) when you need a body link that browsers can hit directly — those come with pre-signed URLs.
+
 ## Collaboration notes (modern WizNote default)
 
 Modern WizNote creates new notes as **collaboration notes** by default: content is a JSON `blocks` array served over WebSocket (sharejs JSONv1), not HTML. This skill supports them via Markdown ↔ blocks conversion.

@@ -73,6 +73,81 @@ function splice (existingHtml, snippet, position) {
   return `<div class="wiz-note-body"><div class="wiz-note-html">${combined}</div></div>`
 }
 
+function humanSize (n) {
+  if (n < 1024) return n + ' B'
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB'
+  if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB'
+  return (n / 1024 / 1024 / 1024).toFixed(1) + ' GB'
+}
+
+/**
+ * Upload local files as first-class attachments (the ones that show up in
+ * WizNote's attachment panel) AND drop a matching download link into the
+ * note body.
+ *
+ * The body link's `href` is the raw KS download URL. WizNote clients that
+ * open the note with an authenticated session render it as a clickable
+ * download; a bare browser tab needs `X-Wiz-Token` in the request header
+ * and will 401 otherwise — that's a WizNote limitation, not ours. If you
+ * need a shareable body link, use `uploadAndEmbed` (resource channel), which
+ * returns pre-signed URLs.
+ *
+ * @param {WizClient} wiz
+ * @param {string}    docGuid
+ * @param {Array<string | {path:string, name?:string}>} items
+ * @param {object}    [opts]
+ * @param {'append'|'prepend'} [opts.position='append']
+ * @param {string}    [opts.heading]
+ * @returns {Promise<{docGuid: string, uploaded: Array<{path,name,attGuid,size,url}>}>}
+ */
+export async function attachAndLink (wiz, docGuid, items, opts = {}) {
+  if (!docGuid) throw new Error('attachAndLink: docGuid required')
+  if (!Array.isArray(items) || !items.length) throw new Error('attachAndLink: items must be a non-empty array')
+  const position = opts.position === 'prepend' ? 'prepend' : 'append'
+
+  const uploaded = []
+  for (const raw of items) {
+    const it = normalise(raw)
+    const displayName = it.name || path.basename(it.path)
+    const buf = await fs.readFile(it.path)
+    const r = await wiz.kb.uploadAttachment(docGuid, buf, displayName)
+    const attGuid = r?.att?.attGuid
+    if (!attGuid) throw new Error(`uploadAttachment returned no attGuid for ${it.path}: ${JSON.stringify(r)}`)
+    uploaded.push({
+      path: it.path,
+      name: displayName,
+      attGuid,
+      size: r.att.dataSize || buf.length,
+      url: wiz.kb.getAttachmentUrl(docGuid, attGuid)
+    })
+  }
+
+  const heading = opts.heading ? `<h3>${esc(opts.heading)}</h3>` : ''
+  const snippet = heading + uploaded.map(u =>
+    `<p>📎 <a href="${esc(u.url)}" data-wiz-att-guid="${esc(u.attGuid)}" download="${esc(u.name)}">${esc(u.name)}</a>` +
+    ` <span style="color:#888">(${humanSize(u.size)})</span></p>`
+  ).join('')
+
+  const detail = await wiz.kb.getNoteContent(docGuid, { downloadInfo: 1, downloadData: 1 })
+  const info = detail?.info || {}
+  const html = splice(detail?.html, snippet, position)
+  const existing = Array.isArray(detail?.resources)
+    ? detail.resources.map(r => r?.name).filter(Boolean)
+    : []
+
+  await wiz.kb.updateNote(docGuid, {
+    kbGuid: wiz.kbGuid,
+    docGuid,
+    html,
+    url: info.url || '',
+    tags: info.tags || '',
+    author: info.author || wiz.userId,
+    resources: existing  // attachments live on their own channel; preserve resource manifest
+  })
+
+  return { docGuid, uploaded }
+}
+
 /**
  * Upload `items` (local file paths, or {path, name?, kind?}) to `docGuid`'s
  * resource storage, then splice a matching HTML snippet into the note body.

@@ -3,22 +3,29 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { uploadAndEmbed } from '../src/embed.js'
+import { uploadAndEmbed, attachAndLink } from '../src/embed.js'
 
 // Stand-in that captures kb calls and returns canned responses.
 function makeStubClient ({ existingHtml = '', existingResources = [] } = {}) {
   const uploads = []
+  const attachments = []
   const updates = []
   return {
     kbGuid: 'kb-fake',
     userId: 'stub@test',
-    calls: { uploads, updates },
+    calls: { uploads, attachments, updates },
     kb: {
       uploadResource (docGuid, buf, name) {
         uploads.push({ docGuid, name, size: buf.length })
-        // Server hands out a slug; keep pic.png's `.png` suffix like the real API does.
         const serverName = `srv-${uploads.length}${name.endsWith('.png') ? '.png' : ''}`
         return { name: serverName, url: `index_files/${serverName}` }
+      },
+      uploadAttachment (docGuid, buf, name) {
+        attachments.push({ docGuid, name, size: buf.length })
+        return { att: { attGuid: `att-${attachments.length}`, name, dataSize: buf.length } }
+      },
+      getAttachmentUrl (docGuid, attGuid) {
+        return `https://stub/ks/attachment/download/kb-fake/${docGuid}/${attGuid}`
       },
       async getNoteContent () {
         return {
@@ -135,6 +142,54 @@ test('uploadAndEmbed: registers new server names into note manifest', async () =
     // Both server slugs must be in the manifest — otherwise other WizNote
     // clients can't resolve the `index_files/…` refs.
     assert.deepEqual(resources, ['srv-1.png', 'srv-2'])
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+})
+
+test('attachAndLink: uploads to attachment channel and links each in body', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'wiz-embed-'))
+  try {
+    writeFileSync(join(tmp, 'a.zip'), Buffer.from('zipbytes'))
+    writeFileSync(join(tmp, 'b.mp3'), Buffer.alloc(2048, 0))
+    const c = makeStubClient({
+      existingHtml: '<div class="wiz-note-body"><div class="wiz-note-html"><p>seed</p></div></div>'
+    })
+    const r = await attachAndLink(c, 'd', [
+      join(tmp, 'a.zip'), join(tmp, 'b.mp3')
+    ], { heading: '附件' })
+
+    // Two attach uploads happened, no resource uploads.
+    assert.equal(c.calls.attachments.length, 2)
+    assert.equal(c.calls.uploads.length, 0)
+    // Both attGuids surface on the return payload.
+    assert.deepEqual(r.uploaded.map(u => u.attGuid), ['att-1', 'att-2'])
+
+    const payload = c.calls.updates[0].payload
+    // Body links point at the raw attachment URL and carry the attGuid marker.
+    assert.match(payload.html, /https:\/\/stub\/ks\/attachment\/download\/kb-fake\/d\/att-1/)
+    assert.match(payload.html, /data-wiz-att-guid="att-2"/)
+    // Size renders in human form.
+    assert.match(payload.html, /\(8 B\)/)   // "zipbytes" = 8 bytes
+    assert.match(payload.html, /\(2\.0 KB\)/)
+    // Attachments do NOT go into resources[] — they're on their own channel.
+    assert.deepEqual(payload.resources, [])
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+})
+
+test('attachAndLink: preserves pre-existing resources array in updateNote', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'wiz-embed-'))
+  try {
+    writeFileSync(join(tmp, 'a.zip'), Buffer.from('zip'))
+    const c = makeStubClient({
+      existingHtml: '<div class="wiz-note-body"><div class="wiz-note-html"><p>x</p></div></div>',
+      existingResources: [{ name: 'old-1.png' }]
+    })
+    await attachAndLink(c, 'd', [join(tmp, 'a.zip')])
+    // Existing resources kept as-is; no new resource names appended.
+    assert.deepEqual(c.calls.updates[0].payload.resources, ['old-1.png'])
   } finally {
     rmSync(tmp, { recursive: true, force: true })
   }
