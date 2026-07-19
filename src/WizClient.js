@@ -1,6 +1,10 @@
 import { AccountServerApi } from './AccountServerApi.js'
 import { KnowledgeBaseApi } from './KnowledgeBaseApi.js'
 import { resolveCredentials, saveSession, clearSession } from './credentials.js'
+import {
+  createCollaborationNote, updateCollaborationNote, readCollaborationNote,
+  getCollaborationToken, fetchCollaborationContent
+} from './collaboration.js'
 
 /**
  * High-level client. Two ways to construct:
@@ -22,18 +26,43 @@ export class WizClient {
    * @param {string} [opts.accountBaseUrl]  AS host; defaults to endpoint or https://as.wiz.cn
    * @param {string} [opts.endpoint]  On-premise shortcut: fills accountBaseUrl AND kbServer.
    */
-  constructor ({ token, kbGuid, kbServer, userId, accountBaseUrl, endpoint } = {}) {
+  constructor ({ token, kbGuid, kbServer, userId, userGuid, accountBaseUrl, endpoint } = {}) {
     if (!token) throw new Error('WizClient requires a token. Use WizClient.login() or WizClient.fromStored().')
     const finalKbServer = kbServer || endpoint
     const finalAsUrl = accountBaseUrl || endpoint
     if (!kbGuid || !finalKbServer) throw new Error('WizClient requires kbGuid and kbServer (or endpoint).')
     this.userId = userId
+    this.userGuid = userGuid
     this.token = token
     this.kbGuid = kbGuid
     this.kbServer = finalKbServer
     this.accountBaseUrl = finalAsUrl
     this.account = new AccountServerApi({ baseUrl: finalAsUrl })
     this.kb = new KnowledgeBaseApi({ baseUrl: finalKbServer, kbGuid, token })
+  }
+
+  // ── Collaboration notes (require `ws` package; on-premise / modern WizNote) ──
+
+  /** Create a collaboration note from Markdown. */
+  createCollaborationNote (opts) { return createCollaborationNote(this, opts) }
+
+  /** Overwrite an existing collaboration note. */
+  updateCollaborationNote (opts) { return updateCollaborationNote(this, opts) }
+
+  /** Read a collaboration note as Markdown (auto-falls back to HTML for legacy notes). */
+  readCollaborationNote (docGuid) { return readCollaborationNote(this, docGuid) }
+
+  /** Low-level: get an editor token. */
+  getCollaborationToken (docGuid) {
+    return getCollaborationToken({ kbServer: this.kbServer, kbGuid: this.kbGuid, docGuid, token: this.token })
+  }
+
+  /** Low-level: raw fetch of the WS document JSON. */
+  fetchCollaborationContent (docGuid, editorToken) {
+    return fetchCollaborationContent({
+      kbServer: this.kbServer, kbGuid: this.kbGuid, docGuid,
+      userGuid: this.userGuid, editorToken
+    })
   }
 
   /** Load from OS Keychain / env / config file. */
@@ -59,11 +88,13 @@ export class WizClient {
         token: result.token,
         kbGuid: result.kbGuid,
         kbServer,
-        accountBaseUrl: asUrl
+        accountBaseUrl: asUrl,
+        userGuid: result.userGuid
       })
     }
     return new WizClient({
       userId,
+      userGuid: result.userGuid,
       token: result.token,
       kbGuid: result.kbGuid,
       kbServer,

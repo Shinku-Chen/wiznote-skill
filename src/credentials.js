@@ -55,9 +55,12 @@ export async function resolveCredentials ({ userId, token, kbGuid, kbServer, acc
     accountBaseUrl: accountBaseUrl || process.env.WIZ_ACCOUNT_URL || envEndpoint
   }
 
+  out.userGuid = process.env.WIZ_USER_GUID
+
   const cfg = await readConfigFile()
   if (cfg) {
     out.userId = out.userId || cfg.userId
+    out.userGuid = out.userGuid || cfg.userGuid
     out.kbGuid = out.kbGuid || cfg.kbGuid
     out.kbServer = out.kbServer || cfg.kbServer
     out.accountBaseUrl = out.accountBaseUrl || cfg.accountBaseUrl
@@ -90,7 +93,7 @@ export async function resolveCredentials ({ userId, token, kbGuid, kbServer, acc
  * Token -> OS Keychain (if available) or falls back to config file with 0600.
  * Non-secret metadata (userId/kbGuid/kbServer) -> config file.
  */
-export async function saveSession ({ userId, token, kbGuid, kbServer, accountBaseUrl }) {
+export async function saveSession ({ userId, token, kbGuid, kbServer, accountBaseUrl, userGuid }) {
   if (!userId || !token) throw new Error('saveSession requires userId and token')
 
   const keytar = await loadKeytar()
@@ -99,10 +102,10 @@ export async function saveSession ({ userId, token, kbGuid, kbServer, accountBas
     await keytar.setPassword(SERVICE, userId, token)
   } else {
     stored = 'file'
-    await writeConfigFile({ userId, kbGuid, kbServer, accountBaseUrl, token, _warning: 'keytar not installed; token stored in plaintext file. Install keytar to upgrade.' })
+    await writeConfigFile({ userId, userGuid, kbGuid, kbServer, accountBaseUrl, token, _warning: 'keytar not installed; token stored in plaintext file. Install keytar to upgrade.' })
     return { stored }
   }
-  await writeConfigFile({ userId, kbGuid, kbServer, accountBaseUrl })
+  await writeConfigFile({ userId, userGuid, kbGuid, kbServer, accountBaseUrl })
   return { stored }
 }
 

@@ -31,6 +31,12 @@ function usage () {
   attach get <docGuid> <attGuid> [-o]     Download attachment (default: name from list)
   attach url <docGuid> <attGuid>          Print raw download URL (needs X-Wiz-Token header)
 
+  collab new "<title>" [-f md.md] [--category=/x/] [--tags=a,b]
+                                          Create a collaboration note from Markdown
+  collab read <docGuid>                   Read collab note as Markdown
+  collab update <docGuid> -f md.md [--title="new"]
+                                          Overwrite collab note with Markdown file
+
 Environment overrides: WIZ_USER, WIZ_TOKEN, WIZ_KB_GUID, WIZ_KB_SERVER`)
 }
 
@@ -161,6 +167,60 @@ async function main () {
         const wiz = await WizClient.fromStored()
         await wiz.kb.renameNote(rest[0], rest.slice(1).join(' '))
         console.log(`Renamed ${rest[0]}`)
+        break
+      }
+      case 'collab': {
+        const sub = rest[0]
+        const flags = {}
+        const positional = []
+        for (const a of rest.slice(1)) {
+          const m = a.match(/^--([^=]+)(?:=(.*))?$/)
+          if (m) flags[m[1]] = m[2] === undefined ? true : m[2]
+          else positional.push(a)
+        }
+        const wiz = await WizClient.fromStored()
+        if (!wiz.userGuid) {
+          console.error('Collab notes require userGuid — re-run `wiz login` to refresh session (older logins may not have captured it).')
+          process.exit(1)
+        }
+        const readFileFlag = async () => {
+          const fIdx = rest.indexOf('-f')
+          if (fIdx < 0) return ''
+          return await fs.readFile(rest[fIdx + 1], 'utf8')
+        }
+        switch (sub) {
+          case 'new': {
+            const title = positional[0]
+            if (!title) { console.error('usage: wiz collab new "<title>" [-f md.md] [--category=/x/] [--tags=a,b]'); process.exit(1) }
+            const markdown = await readFileFlag()
+            const r = await wiz.createCollaborationNote({
+              title, markdown,
+              category: flags.category || '/My Notes/',
+              tags: flags.tags || ''
+            })
+            console.log(JSON.stringify(r, null, 2))
+            break
+          }
+          case 'read': {
+            if (!positional[0]) { console.error('usage: wiz collab read <docGuid>'); process.exit(1) }
+            const md = await wiz.readCollaborationNote(positional[0])
+            process.stdout.write(md)
+            break
+          }
+          case 'update': {
+            if (!positional[0]) { console.error('usage: wiz collab update <docGuid> -f md.md [--title="new"]'); process.exit(1) }
+            const markdown = await readFileFlag()
+            if (!markdown) { console.error('need -f <path/to/md>'); process.exit(1) }
+            const r = await wiz.updateCollaborationNote({
+              docGuid: positional[0], markdown, title: flags.title
+            })
+            console.log(JSON.stringify(r, null, 2))
+            break
+          }
+          default:
+            console.error('unknown collab subcommand:', sub)
+            process.exit(1)
+        }
         break
       }
       case 'attach': {

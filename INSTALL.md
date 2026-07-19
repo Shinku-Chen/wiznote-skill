@@ -8,7 +8,11 @@ Detailed setup for different platforms and edge cases. For the happy path see [R
   Check with `node -v`.
 - **git** — to clone the repo into the skill directory.
 
-Nothing else is strictly required. The optional `keytar` upgrade below unlocks OS Keychain storage; without it, tokens fall back to a `0600` file in `~/.config/wiznote/`.
+Nothing else is strictly required. Two **optional** upgrades:
+- **`keytar`** — enables OS Keychain storage for the login token (falls back to a `0600` file otherwise).
+- **`ws`** — enables **collaboration notes** support (create/read/update WizNote's modern block-based note format, which travels over WebSocket). Legacy HTML notes work without it.
+
+Both are installed by `npm run setup`.
 
 ## Where to put the skill
 

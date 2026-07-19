@@ -154,6 +154,37 @@ await wiz.kb.uploadImage(docGuid, form)  // or uploadResource() — same call
 
 **Attachment deletion has no dedicated endpoint.** To remove one: fetch the note HTML, strip the `<a href>` / `<img src>` reference, `updateNote(docGuid,{html})` — server garbage-collects orphans.
 
+## Collaboration notes (modern WizNote default)
+
+Modern WizNote creates new notes as **collaboration notes** by default: content is a JSON `blocks` array served over WebSocket (sharejs JSONv1), not HTML. This skill supports them via Markdown ↔ blocks conversion.
+
+**Setup:** requires the `ws` package. `npm run setup` installs it alongside keytar.
+
+**Requires** `userGuid` in the session — captured on `wiz login`. Older sessions from before this feature need `wiz logout && wiz login` to refresh.
+
+```js
+// Create from Markdown
+await wiz.createCollaborationNote({
+  title: '2026 W17 周报',
+  markdown: '# 完成\n- 特性 A\n\n## 计划\n- [ ] 测试 B',
+  category: '/工作/周报/',
+  tags: '周报'
+})
+
+// Read as Markdown (auto-detects note type, falls back to HTML for legacy)
+const md = await wiz.readCollaborationNote(docGuid)
+
+// Overwrite content
+await wiz.updateCollaborationNote({ docGuid, markdown: '# new', title: 'new title' })
+```
+
+Supported Markdown constructs (write + read):
+`# heading`, paragraphs, `**bold**` / `*italic*` / `~~strike~~` / `` `code` `` / `[link](url)`, `- ul` / `1. ol` / `- [x] check`, `> quote`, ` ``` code blocks ``` `, `---` hr, `![alt](url)` image, `| tables |`.
+
+Not yet supported: formula/audio/drawio/encrypted/webpage embed blocks (roundtrip only).
+
+CLI: `wiz collab new "<title>" -f md.md [--category=/x/] [--tags=a,b]`, `wiz collab read <docGuid>`, `wiz collab update <docGuid> -f md.md`.
+
 ## Error handling
 
 Non-200 `returnCode` throws `WizApiError` with `.code` / `.externCode`.
