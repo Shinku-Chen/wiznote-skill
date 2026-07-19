@@ -10,8 +10,13 @@ const [, , cmd, ...rest] = process.argv
 function usage () {
   console.log(`wiz <command>
 
-  login              Authenticate and store token (OS Keychain preferred)
-  logout             Clear stored token
+  login [--endpoint=URL] [--save-password]
+                     Authenticate and store token (OS Keychain preferred).
+                     --save-password: also store password in Keychain for
+                                      auto-reauth when the token expires.
+  logout             Clear stored token AND stored password
+  save-password      Enable auto-reauth by storing password now (post-login)
+  forget-password    Disable auto-reauth by clearing the stored password
   whoami             Show current session
   ls [category] [--start=N] [--count=N] [--all]
                      List notes in a category. Default: root, count=50.
@@ -57,22 +62,53 @@ async function main () {
   try {
     switch (cmd) {
       case 'login': {
-        // Support: wiz login --endpoint=https://your-on-prem-host
+        // Support: wiz login [--endpoint=URL] [--save-password]
         const flags = {}
         for (const a of rest) {
-          const m = a.match(/^--([^=]+)=(.*)$/)
-          if (m) flags[m[1]] = m[2]
+          const m = a.match(/^--([^=]+)(?:=(.*))?$/)
+          if (m) flags[m[1]] = m[2] === undefined ? true : m[2]
         }
         const endpoint = flags.endpoint || process.env.WIZ_ENDPOINT
+        const doSavePassword = !!flags['save-password']
         if (endpoint) console.log(`Using endpoint: ${endpoint}`)
+        if (doSavePassword) {
+          console.log('\n⚠  --save-password: your password will be stored in OS Keychain,')
+          console.log('   so the SDK can silently re-login when the token expires.')
+          console.log('   Anyone who can run code as your user account can then read it back.\n')
+        }
         const userId = await ask('WizNote userId (email): ')
         const password = await ask('Password: ', { silent: true })
-        const wiz = await WizClient.login({ userId: userId.trim(), password, endpoint })
+        const wiz = await WizClient.login({
+          userId: userId.trim(), password, endpoint,
+          savePassword: doSavePassword
+        })
         console.log(`\nLogged in as ${wiz.userId}`)
         console.log(`  kbGuid       : ${wiz.kbGuid}`)
         console.log(`  kbServer     : ${wiz.kbServer}`)
         console.log(`  accountBaseUrl: ${wiz.accountBaseUrl}`)
         console.log(`  token        : stored in OS Keychain (or ~/.config/wiznote/session.json if keytar unavailable)`)
+        if (doSavePassword) console.log('  password     : stored in OS Keychain (auto-reauth enabled)')
+        break
+      }
+      case 'save-password': {
+        // Opt-in without doing a full login. Useful if user forgot --save-password.
+        const c = await resolveCredentials().catch(() => null)
+        if (!c || !c.userId) { console.error('Run `wiz login` first.'); process.exit(1) }
+        console.log('⚠  This will store your WizNote password in OS Keychain.')
+        console.log('   The SDK will use it to silently re-login when the token expires.')
+        const password = await ask('Password: ', { silent: true })
+        const { WizClient } = await import('../src/index.js')
+        await WizClient.savePassword(c.userId, password)
+        console.log(`Password saved for ${c.userId}. Auto-reauth is now enabled.`)
+        break
+      }
+      case 'forget-password': {
+        const c = await resolveCredentials().catch(() => null)
+        if (c?.userId) {
+          const { WizClient } = await import('../src/index.js')
+          await WizClient.clearStoredPassword(c.userId)
+        }
+        console.log('Stored password cleared. Auto-reauth is now disabled.')
         break
       }
       case 'logout': {

@@ -71,6 +71,16 @@ If you're writing a script that the user will run, put it in `scripts/` and refe
 
 `WIZ_ENDPOINT` is a shortcut for on-premise: sets both `accountBaseUrl` and `kbServer` defaults to the same host.
 
+## Auto-reauth (opt-in password storage)
+
+By default the SDK never stores the password — only the token, which has a ~15-minute TTL. When it expires, calls fail with `Invalid token` and the user must run `wiz login` again.
+
+Users who want silent re-login can **opt in**: `wiz login --save-password` (or `wiz save-password` post-login). The password is written to the OS Keychain (never a file), and `wiz.kb.*` calls transparently retry once after refreshing the token.
+
+**Trade-off:** any process running as the same OS user can read the password back via keytar. Do not enable on shared machines or if your OS user account is not the sole trust boundary. Undo with `wiz forget-password`.
+
+AI assistants using this skill: **do not enable auto-reauth on behalf of the user without explicit consent** — describe the trade-off first.
+
 If `WizClient.fromStored()` throws "token not found", instruct the user to run `wiz login`. **Do NOT prompt for the password inside the chat.** Full rationale: [skill/references/credentials.md](skill/references/credentials.md).
 
 ## API surface

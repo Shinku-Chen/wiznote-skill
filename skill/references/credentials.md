@@ -37,6 +37,28 @@ Password is **never** stored anywhere. `WizClient.login()` uses it once and disc
 4. If you need to demonstrate an authenticated call, use `await WizClient.fromStored()` and let the runtime resolve credentials — do not surface the token value.
 5. If a user provides a token in the chat for debugging, use it only in-memory and remind them to rotate it (`wiz logout && wiz login`).
 
+## Auto-reauth via stored password (opt-in)
+
+By default the SDK follows the "password used once, never stored" rule. If the user explicitly wants the SDK to silently re-authenticate when the token expires, they can opt in:
+
+```bash
+wiz login --save-password    # at login time
+wiz save-password            # after login (post-hoc)
+wiz forget-password          # disable
+```
+
+When enabled:
+- Password is written to OS Keychain under service `wiznote-sdk-password`
+- On any `kb.*` call that fails with an auth-shaped error (`WizApiError` code 301/322/31001 or message matching `invalid token|expired|unauthorized|无效.*token|token.*失效`), the client silently calls `login()` with the stored password, updates its token, and retries the original call **once**
+- Reauth is de-duplicated via `_reauthInFlight` so concurrent calls don't stampede
+
+**Threat model:**
+- OS Keychain scoped to the user — safe against other users on the same machine, admin-level malware or root shell can still read it
+- Password rotation on WizNote's side (via web UI) will cause reauth to fail; user must re-run `wiz login`
+- If keytar isn't installed, `savePassword` throws — we refuse to store passwords in the plain-text config file
+
+**AI-assistant rule:** never call `savePassword` on the user's behalf without explicit consent. State the trade-off (any local process running as the user can read it) and let them decide.
+
 ## Rotation & revocation
 
 - Rotate: `wiz logout && wiz login` — old token is invalidated server-side by `logout`, new one replaces the keychain entry.

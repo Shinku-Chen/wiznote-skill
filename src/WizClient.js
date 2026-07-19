@@ -1,6 +1,10 @@
 import { AccountServerApi } from './AccountServerApi.js'
 import { KnowledgeBaseApi } from './KnowledgeBaseApi.js'
-import { resolveCredentials, saveSession, clearSession } from './credentials.js'
+import {
+  resolveCredentials, saveSession, clearSession,
+  savePassword, getStoredPassword, clearStoredPassword
+} from './credentials.js'
+import { WizApiError } from './request.js'
 import {
   createCollaborationNote, updateCollaborationNote, readCollaborationNote,
   getCollaborationToken, fetchCollaborationContent
@@ -38,7 +42,61 @@ export class WizClient {
     this.kbServer = finalKbServer
     this.accountBaseUrl = finalAsUrl
     this.account = new AccountServerApi({ baseUrl: finalAsUrl })
-    this.kb = new KnowledgeBaseApi({ baseUrl: finalKbServer, kbGuid, token })
+    this._kbInner = new KnowledgeBaseApi({ baseUrl: finalKbServer, kbGuid, token })
+    // Expose kb via a Proxy that auto-retries on auth failure IF the user has
+    // opted into password storage (savePassword). Otherwise pass through.
+    this.kb = new Proxy(this._kbInner, {
+      get: (target, prop) => {
+        const orig = target[prop]
+        if (typeof orig !== 'function') return orig
+        return async (...args) => {
+          try {
+            return await orig.apply(target, args)
+          } catch (err) {
+            if (isAuthError(err) && await this._tryReauth()) {
+              return await orig.apply(target, args)
+            }
+            throw err
+          }
+        }
+      }
+    })
+  }
+
+  /**
+   * Attempt to refresh credentials using a stored password (opt-in).
+   * Returns true if reauth succeeded and this client's token was updated.
+   */
+  async _tryReauth () {
+    if (this._reauthInFlight) return await this._reauthInFlight
+    this._reauthInFlight = (async () => {
+      if (!this.userId) return false
+      const password = await getStoredPassword(this.userId)
+      if (!password) return false
+      try {
+        const result = await this.account.login({ userId: this.userId, password })
+        this.token = result.token
+        this.userGuid = result.userGuid || this.userGuid
+        // kbServer/kbGuid rarely change but refresh anyway
+        this.kbGuid = result.kbGuid || this.kbGuid
+        this.kbServer = result.kbServer || this.kbServer
+        this._kbInner.setToken(this.token)
+        // Persist the new token (best-effort)
+        await saveSession({
+          userId: this.userId,
+          userGuid: this.userGuid,
+          token: this.token,
+          kbGuid: this.kbGuid,
+          kbServer: this.kbServer,
+          accountBaseUrl: this.accountBaseUrl
+        }).catch(() => {})
+        return true
+      } catch {
+        return false
+      }
+    })()
+    try { return await this._reauthInFlight }
+    finally { this._reauthInFlight = null }
   }
 
   // ── Collaboration notes (require `ws` package; on-premise / modern WizNote) ──
@@ -75,7 +133,11 @@ export class WizClient {
    * Interactive login. Password is sent once to the account server, never persisted.
    * On success: token -> OS Keychain, kbGuid/kbServer/userId -> ~/.config/wiznote/session.json
    */
-  static async login ({ userId, password, accountBaseUrl, endpoint, persist = true }) {
+  /** Helper for callers who want to save/clear password out of band. */
+  static async savePassword (userId, password) { return savePassword(userId, password) }
+  static async clearStoredPassword (userId) { return clearStoredPassword(userId) }
+
+  static async login ({ userId, password, accountBaseUrl, endpoint, persist = true, savePassword: doSavePassword = false }) {
     if (!userId || !password) throw new Error('login requires userId and password')
     const asUrl = accountBaseUrl || endpoint
     const account = new AccountServerApi({ baseUrl: asUrl })
@@ -91,6 +153,9 @@ export class WizClient {
         accountBaseUrl: asUrl,
         userGuid: result.userGuid
       })
+    }
+    if (doSavePassword) {
+      await savePassword(userId, password)
     }
     return new WizClient({
       userId,
@@ -110,4 +175,18 @@ export class WizClient {
   async keepAlive () {
     return this.account.keepTokenAlive({ token: this.token })
   }
+}
+
+/**
+ * Classify an error as "the server rejected our token, try reauth".
+ * WizNote's known auth-failure codes are 301 / 322 / 31001; we also match on
+ * message text as a safety net.
+ */
+function isAuthError (err) {
+  if (!err) return false
+  if (err instanceof WizApiError) {
+    if ([301, 322, 31001].includes(err.code)) return true
+  }
+  const msg = String(err.message || '').toLowerCase()
+  return /invalid token|token.*expired|not logged|unauthorized|无效.*token|token.*失效/i.test(msg)
 }
