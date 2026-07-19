@@ -11,6 +11,7 @@ import {
   listCollaborationResources, downloadCollaborationResource
 } from './collaboration.js'
 import { uploadAndEmbed, attachAndLink } from './embed.js'
+import { createMarkdownNote, updateMarkdownNote, readMarkdownNote } from './markdown.js'
 
 /**
  * High-level client. Two ways to construct:
@@ -122,6 +123,19 @@ export class WizClient {
   attachAndLink (docGuid, items, opts) {
     return attachAndLink(this, docGuid, items, opts)
   }
+
+  // ── Markdown notes (type='lite/markdown') ────────────────────────────
+  // WizNote's markdown editor requires a full <!doctype html>…<pre>…</pre>
+  // shell; raw markdown alone or the document-note wrapper renders blank.
+
+  /** Create a `lite/markdown` note from a markdown string. */
+  createMarkdownNote (opts) { return createMarkdownNote(this, opts) }
+
+  /** Overwrite a markdown note's body (and optionally its title). */
+  updateMarkdownNote (opts) { return updateMarkdownNote(this, opts) }
+
+  /** Read a markdown note back as raw markdown source. */
+  readMarkdownNote (docGuid) { return readMarkdownNote(this, docGuid) }
 
   // ── Collaboration notes (require `ws` package; on-premise / modern WizNote) ──
 

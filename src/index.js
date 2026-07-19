@@ -13,3 +13,4 @@ export {
   listCollaborationResources, downloadCollaborationResource
 } from './collaboration.js'
 export { uploadAndEmbed, attachAndLink } from './embed.js'
+export { wrapMarkdown, unwrapMarkdown, createMarkdownNote, updateMarkdownNote, readMarkdownNote } from './markdown.js'

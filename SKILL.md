@@ -231,6 +231,29 @@ Each file goes to the attachment panel (via `attachment/create`) and gets a `<a 
 
 The link's `href` is the raw KS URL — clicks resolve inside authenticated WizNote clients (they inject `X-Wiz-Token`); a plain browser tab against that URL will 401. Use `uploadAndEmbed` (resource channel) when you need a body link that browsers can hit directly — those come with pre-signed URLs.
 
+## Markdown notes (`type: 'lite/markdown'`, single-user)
+
+WizNote's markdown editor requires the raw markdown wrapped in a full HTML5
+shell — `<!doctype html><html><head><meta charset="utf-8"></head><body><pre>…markdown source…</pre></body></html>`.
+Skipping the shell or using the `document`-note wrapper (`<div class="wiz-note-body">`) leaves the client body blank.
+
+Use the helpers so you never touch the shell:
+
+```js
+const r = await wiz.createMarkdownNote({
+  title: '周报 W17',
+  markdown: '# 本周完成\n- 特性 A\n',
+  category: '/工作/',
+  tags: ''
+})
+await wiz.updateMarkdownNote({ docGuid: r.docGuid, markdown: '# 新版本', title: '新标题' })
+const md = await wiz.readMarkdownNote(r.docGuid)   // raw markdown back
+```
+
+Low-level: `wrapMarkdown(md)` returns the string body suitable for `kb.createNote({html, type:'lite/markdown'})`; `unwrapMarkdown(html)` pulls the source back out of `getNoteContent().html`.
+
+CLI: `wiz md new "<title>" -f md.md [--category=/x/]`, `wiz md read <docGuid>`, `wiz md update <docGuid> -f md.md [--title="…"]`.
+
 ## Collaboration notes (modern WizNote default)
 
 Modern WizNote creates new notes as **collaboration notes** by default: content is a JSON `blocks` array served over WebSocket (sharejs JSONv1), not HTML. This skill supports them via Markdown ↔ blocks conversion.

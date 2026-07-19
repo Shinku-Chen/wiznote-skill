@@ -48,6 +48,12 @@ function usage () {
                                           by extension. --prepend to insert at top.
                                           --heading="…" wraps the block in <h3>.
 
+  md new "<title>" [-f md.md] [--category=/x/]
+                                          Create a lite/markdown note (single-user; HTML shell)
+  md read <docGuid>                       Read markdown note as raw markdown
+  md update <docGuid> -f md.md [--title="new"]
+                                          Overwrite markdown note with Markdown file
+
   collab new "<title>" [-f md.md] [--category=/x/] [--tags=a,b]
                                           Create a collaboration note from Markdown
   collab read <docGuid>                   Read collab note as Markdown
@@ -217,6 +223,53 @@ async function main () {
         const wiz = await WizClient.fromStored()
         await wiz.kb.renameNote(rest[0], rest.slice(1).join(' '))
         console.log(`Renamed ${rest[0]}`)
+        break
+      }
+      case 'md': {
+        const sub = rest[0]
+        const flags = {}
+        const positional = []
+        for (const a of rest.slice(1)) {
+          const m = a.match(/^--([^=]+)(?:=(.*))?$/)
+          if (m) flags[m[1]] = m[2] === undefined ? true : m[2]
+          else positional.push(a)
+        }
+        const wiz = await WizClient.fromStored()
+        const readFileFlag = async () => {
+          const fIdx = rest.indexOf('-f')
+          if (fIdx < 0) return ''
+          return await fs.readFile(rest[fIdx + 1], 'utf8')
+        }
+        switch (sub) {
+          case 'new': {
+            const title = positional[0]
+            if (!title) { console.error('usage: wiz md new "<title>" [-f md.md] [--category=/x/]'); process.exit(1) }
+            const markdown = await readFileFlag()
+            const r = await wiz.createMarkdownNote({
+              title, markdown,
+              category: flags.category || '/My Notes/'
+            })
+            console.log(JSON.stringify({ docGuid: r.docGuid, title: r.title, type: r.type, category: r.category }, null, 2))
+            break
+          }
+          case 'read': {
+            if (!positional[0]) { console.error('usage: wiz md read <docGuid>'); process.exit(1) }
+            const md = await wiz.readMarkdownNote(positional[0])
+            process.stdout.write(md)
+            break
+          }
+          case 'update': {
+            if (!positional[0]) { console.error('usage: wiz md update <docGuid> -f md.md [--title="new"]'); process.exit(1) }
+            const markdown = await readFileFlag()
+            if (!markdown) { console.error('need -f <path/to/md>'); process.exit(1) }
+            await wiz.updateMarkdownNote({ docGuid: positional[0], markdown, title: flags.title })
+            console.log('updated ' + positional[0])
+            break
+          }
+          default:
+            console.error('unknown md subcommand:', sub)
+            process.exit(1)
+        }
         break
       }
       case 'collab': {
