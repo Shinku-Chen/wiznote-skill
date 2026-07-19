@@ -4,6 +4,8 @@ WizNote(为知笔记)接口的 AI Skill。让 Claude Code、Cursor 等 AI 助手
 
 密码可以选存或不存;存的话只进系统 Keychain,用来在 token(15 分钟)过期时自动续登。
 
+官方 REST API 文档:[总览](https://www.wiz.cn/docs/restapi/index.html) · [AS 账号服务](https://www.wiz.cn/docs/restapi/as.html) · [KS 数据服务](https://www.wiz.cn/docs/restapi/ks.html)。本 skill 在此之上补齐了协作笔记 WebSocket / 资源上传 / 附件等官方文档未覆盖的部分,见 [SKILL.md](SKILL.md) 和 [skill/references/api.md](skill/references/api.md)。
+
 ## 安装
 
 跟 AI 说一句就行:

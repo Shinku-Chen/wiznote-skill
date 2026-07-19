@@ -437,4 +437,12 @@ If both succeed, the skill is ready.
 
 ## Full protocol reference
 
-Language-agnostic URL / field / curl reference: [skill/references/api.md](skill/references/api.md).
+**Official WizNote REST API docs** (the source of truth when this repo and the server disagree — go read the official docs first):
+
+- Overview: <https://www.wiz.cn/docs/restapi/index.html>
+- Account Server (AS): <https://www.wiz.cn/docs/restapi/as.html>
+- Knowledge base (KS): <https://www.wiz.cn/docs/restapi/ks.html>
+
+⚠ The official docs cover REST only. Some routes this skill uses were reverse-engineered from the WizNote web client and are NOT documented upstream — chiefly the collaboration-note WebSocket (sharejs) protocol and the two-step collab resource upload (`/editor/:kb/:doc/resources/<hash>` + `POST /editor/:kb/:doc/resources` multipart). See `skill/references/api.md` for those.
+
+Language-agnostic URL / field / curl reference (local, with the reverse-engineered pieces): [skill/references/api.md](skill/references/api.md).

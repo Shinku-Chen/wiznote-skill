@@ -2,6 +2,14 @@
 
 Language-agnostic protocol notes. Use this if you call WizNote from anything other than the JS SDK in this repo (Python, Go, curl, ...).
 
+**Upstream docs — always cross-check first**:
+
+- Overview: <https://www.wiz.cn/docs/restapi/index.html>
+- Account Server (AS): <https://www.wiz.cn/docs/restapi/as.html>
+- Knowledge base (KS): <https://www.wiz.cn/docs/restapi/ks.html>
+
+This file adds routes the upstream docs don't cover (collab-note WebSocket sharejs protocol, two-step collab resource upload) and records observed quirks (multipart field-name gotchas, dedupe signals) that the docs are silent on.
+
 ## Servers
 
 | Server | Default host | Discovery |
