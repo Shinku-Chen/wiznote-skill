@@ -38,20 +38,35 @@ cd ~/.claude/skills/wiznote-api && npm run setup
 
 Windows / Linux 需要装编译工具链,见 [INSTALL.md](INSTALL.md)。
 
+## 自动续登(可选)
+
+WizNote 的 token 大约 **15 分钟**就过期,过期后调用会报 `Invalid token`,得再 `wiz login` 一次。
+
+如果你能接受**把密码也存进 Keychain**,可以让 skill 自动续登——token 过期时 skill 会用密码悄悄重新登录、更新 token、重试你的调用,你完全无感:
+
+```bash
+wiz login --save-password    # 登录时就开启
+wiz save-password            # 已经登录了,现在开启
+wiz forget-password          # 不想要了,关掉
+```
+
+**权衡说明**:密码进 Keychain 是**加密存储**,同机不同用户读不到。但**同一 OS 账号下**跑的任何程序都能通过 keytar 读回来。共享机器 / 不放心的场景就别开。
+
 ## 常用命令
 
 ```bash
-wiz login              # 登录
-wiz whoami             # 查看当前账号
-wiz ls                          # 根目录前 50 篇
-wiz ls /工作/                   # 指定文件夹前 50 篇
-wiz ls --count=200              # 一页拉 200 篇
-wiz ls --start=50               # 从第 51 篇开始
-wiz ls /工作/ --all             # 自动翻页拉完整个文件夹
-wiz search 关键词       # 搜笔记
-wiz cat <docGuid>      # 看笔记内容
-wiz tags               # 列出标签
-wiz logout             # 登出并清本地
+wiz login                        # 登录(加 --save-password 顺便开自动续登)
+wiz whoami                       # 查看当前账号
+wiz ls                           # 根目录前 50 篇
+wiz ls /工作/                    # 指定文件夹前 50 篇
+wiz ls --count=200               # 一页拉 200 篇
+wiz ls --start=50                # 从第 51 篇开始
+wiz ls /工作/ --all              # 自动翻页拉完整个文件夹
+wiz search 关键词                # 搜笔记
+wiz cat <docGuid>                # 看笔记内容
+wiz tags                         # 列出标签
+wiz save-password / forget-password  # 开/关自动续登
+wiz logout                       # 登出并清本地(token + 密码都清)
 ```
 
 (实际调用形式:`node ~/.claude/skills/wiznote-api/scripts/wiz.js <cmd>`,想省事可以在 shell 里 `alias wiz="node ~/.claude/skills/wiznote-api/scripts/wiz.js"`)
