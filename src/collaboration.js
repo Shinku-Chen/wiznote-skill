@@ -215,6 +215,216 @@ export async function writeCollaborationBlocks (opts) {
 // High-level helpers
 // ────────────────────────────────────────────────────────────────────────────
 
+// ────────────────────────────────────────────────────────────────────────────
+// Collab resource upload — the two-step, content-addressed flow that WizNote's
+// web editor uses when the user drags a file into a collab note.
+//
+//   1. POST /editor/:kb/:doc/resources/<hash>          Content-Type: JSON
+//        body: {"name": "<user filename>", "size": N}
+//      → 201 [] (registers a "resource slot" for this doc+hash)
+//   2. POST /editor/:kb/:doc/resources                 Content-Type: multipart
+//        fields: file-size (byte count),
+//                file-hash (base64url(sha256(bytes)), no extension),
+//                file      (the bytes, filename preserved)
+//      → 201 ["<hash>.<ext>"]  (final `src` for the embed block)
+//
+// Both steps require BOTH headers:
+//   x-live-editor-token: <editorToken from getCollaborationToken>
+//   x-live-editor-base-url: <base64(kbServer + '/editor/' + kbGuid + '/' + docGuid)>
+// The token goes in a HEADER, NOT the cookie the download path uses.
+// ────────────────────────────────────────────────────────────────────────────
+
+function hashBytes (buf) {
+  return crypto.createHash('sha256').update(buf).digest('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function guessMime (name, buf) {
+  const ext = (name.match(/\.([^.]+)$/) || [])[1]?.toLowerCase() || ''
+  const map = {
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+    webp: 'image/webp', bmp: 'image/bmp', svg: 'image/svg+xml', avif: 'image/avif',
+    heic: 'image/heic', ico: 'image/x-icon',
+    mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4',
+    flac: 'audio/flac', aac: 'audio/aac', opus: 'audio/opus',
+    mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
+    zip: 'application/x-zip-compressed', pdf: 'application/pdf',
+    doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    txt: 'text/plain', json: 'application/json', xml: 'application/xml'
+  }
+  return map[ext] || 'application/octet-stream'
+}
+
+function pickEmbedType (mime) {
+  if (mime.startsWith('image/')) return 'image'
+  if (mime.startsWith('audio/')) return 'audio'
+  if (mime.startsWith('video/')) return 'video'
+  return 'office'  // WizNote's generic downloadable-file card kind
+}
+
+async function collabHeaders (wiz, docGuid) {
+  const tokRes = await getCollaborationToken({
+    kbServer: wiz.kbServer, kbGuid: wiz.kbGuid, docGuid, token: wiz.token
+  })
+  const editorToken = tokRes?.editorToken || tokRes
+  const base = `${wiz.kbServer}/editor/${wiz.kbGuid}/${docGuid}`
+  const b64Base = Buffer.from(base).toString('base64')
+  return {
+    editorToken,
+    base,
+    headers: {
+      'accept': 'application/json, text/plain, */*',
+      'origin': 'https://www.wiz.cn',
+      'referer': 'https://www.wiz.cn/',
+      'user-agent': 'Mozilla/5.0',
+      'x-live-editor-token': editorToken,
+      'x-live-editor-base-url': b64Base
+    }
+  }
+}
+
+/**
+ * Upload a file into a collaboration note's resource bucket.
+ * Returns metadata suitable for an `embed` block's `embedData`.
+ *
+ * @param {WizClient} wiz
+ * @param {string}    docGuid
+ * @param {Buffer}    buffer
+ * @param {string}    fileName    original filename (used for MIME + display)
+ * @returns {Promise<{src, fileName, fileSize, fileType, hash}>}
+ */
+export async function uploadCollabResource (wiz, docGuid, buffer, fileName) {
+  if (!Buffer.isBuffer(buffer)) buffer = Buffer.from(buffer)
+  const hash = hashBytes(buffer)
+  const mime = guessMime(fileName, buffer)
+  const { headers, base } = await collabHeaders(wiz, docGuid)
+
+  // Step 1 — register slot
+  const r1 = await fetch(`${base}/resources/${hash}`, {
+    method: 'POST',
+    headers: { ...headers, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: fileName, size: buffer.length })
+  })
+  if (r1.status !== 201 && r1.status !== 200) {
+    throw new Error(`collab upload step 1 failed: HTTP ${r1.status} ${await r1.text()}`)
+  }
+
+  // Step 2 — upload bytes
+  const form = new FormData()
+  form.append('file-size', String(buffer.length))
+  form.append('file-hash', hash)
+  form.append('file', new Blob([buffer], { type: mime }), fileName)
+  const r2 = await fetch(`${base}/resources`, { method: 'POST', headers, body: form })
+  if (r2.status !== 201 && r2.status !== 200) {
+    throw new Error(`collab upload step 2 failed: HTTP ${r2.status} ${await r2.text()}`)
+  }
+  let src
+  try {
+    const parsed = await r2.json()
+    if (Array.isArray(parsed) && parsed[0]) src = parsed[0]
+  } catch {}
+  // Fallback: reconstruct `hash.ext` from what we know if server didn't echo.
+  if (!src) {
+    const ext = (fileName.match(/\.([^.]+)$/) || [])[1]
+    src = ext ? `${hash}.${ext.toLowerCase()}` : hash
+  }
+  return { src, fileName, fileSize: buffer.length, fileType: mime, hash }
+}
+
+/**
+ * Append embed blocks to an existing collab note. Preserves current content —
+ * fetches the doc, splices in new blocks, then rewrites via the sharejs
+ * delete+create flow that writeCollaborationBlocks already uses.
+ *
+ * @param {WizClient} wiz
+ * @param {string}    docGuid
+ * @param {Array<{src, fileName, fileSize, fileType}>} items  (from uploadCollabResource)
+ * @param {object}    [opts]
+ * @param {'append'|'prepend'} [opts.position='append']
+ */
+export async function appendCollabEmbeds (wiz, docGuid, items, opts = {}) {
+  if (!Array.isArray(items) || !items.length) return { docGuid, embedded: [] }
+  const position = opts.position === 'prepend' ? 'prepend' : 'append'
+
+  // Fetch current blocks — same protocol as fetchCollaborationContent, but we
+  // need the parsed structure so we can splice.
+  const { headers: _h, editorToken } = await collabHeaders(wiz, docGuid)
+  const raw = await fetchCollaborationContent({
+    kbServer: wiz.kbServer, kbGuid: wiz.kbGuid, docGuid,
+    userGuid: wiz.userGuid, editorToken
+  })
+  const parsed = JSON.parse(raw)
+  const inner = parsed?.data?.data
+  const currentBlocks = inner?.blocks || []
+  const version = parsed?.data?.v ?? 0
+
+  const newBlocks = items.map(u => ({
+    id: crypto.randomBytes(4).toString('hex'),
+    type: 'embed',
+    embedType: pickEmbedType(u.fileType || ''),
+    align: 'center',
+    quoted: false,
+    embedData: {
+      src: u.src,
+      fileName: u.fileName,
+      fileSize: u.fileSize,
+      fileType: u.fileType,
+      previewType: 'card'
+    }
+  }))
+
+  const mergedBlocks = position === 'prepend'
+    ? [...newBlocks, ...currentBlocks]
+    : [...currentBlocks, ...newBlocks]
+
+  // Preserve any custom top-level fields the doc has (comments/meta/authors/…).
+  const extras = {}
+  if (inner) {
+    for (const [k, v] of Object.entries(inner)) {
+      if (k === 'blocks') continue
+      extras[k] = v
+    }
+  }
+
+  await writeCollaborationBlocks({
+    kbServer: wiz.kbServer, kbGuid: wiz.kbGuid, docGuid,
+    userGuid: wiz.userGuid, editorToken,
+    blocks: mergedBlocks, extras,
+    version,
+    deleteFirst: currentBlocks.length > 0 || version > 0
+  })
+  return { docGuid, embedded: newBlocks }
+}
+
+/**
+ * One-shot: upload files into a collab note AND insert matching embed blocks
+ * at the end (or start) of the note. Matches WizNote's client behaviour when
+ * the user drags a file in.
+ *
+ * @param {WizClient} wiz
+ * @param {string}    docGuid
+ * @param {Array<string|{path,name?}>} items
+ * @param {object}    [opts]
+ */
+export async function collabUploadAndEmbed (wiz, docGuid, items, opts = {}) {
+  if (!Array.isArray(items) || !items.length) throw new Error('collabUploadAndEmbed: items required')
+  const fs = await import('node:fs/promises')
+  const path = await import('node:path')
+  const uploaded = []
+  for (const raw of items) {
+    const it = typeof raw === 'string' ? { path: raw } : raw
+    if (!it?.path) throw new Error('collabUploadAndEmbed: each item needs `path`')
+    const buf = await fs.readFile(it.path)
+    const name = it.name || path.basename(it.path)
+    const info = await uploadCollabResource(wiz, docGuid, buf, name)
+    uploaded.push(info)
+  }
+  const r = await appendCollabEmbeds(wiz, docGuid, uploaded, opts)
+  return { docGuid, uploaded, embedded: r.embedded }
+}
+
 export async function createCollaborationNote (wiz, {
   title, markdown = '', category = '/My Notes/', tags = ''
 }) {

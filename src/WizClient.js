@@ -8,7 +8,8 @@ import { WizApiError } from './request.js'
 import {
   createCollaborationNote, updateCollaborationNote, readCollaborationNote,
   getCollaborationToken, fetchCollaborationContent,
-  listCollaborationResources, downloadCollaborationResource
+  listCollaborationResources, downloadCollaborationResource,
+  uploadCollabResource, appendCollabEmbeds, collabUploadAndEmbed
 } from './collaboration.js'
 import { uploadAndEmbed, attachAndLink } from './embed.js'
 import { createMarkdownNote, updateMarkdownNote, readMarkdownNote } from './markdown.js'
@@ -153,6 +154,15 @@ export class WizClient {
 
   /** Download a single collab-note resource (returns { buffer, contentType, name }). */
   downloadCollaborationResource (docGuid, name) { return downloadCollaborationResource(this, docGuid, name) }
+
+  /** Upload one file into a collab note's resource bucket. Returns embed metadata. */
+  uploadCollabResource (docGuid, buffer, name) { return uploadCollabResource(this, docGuid, buffer, name) }
+
+  /** Append embed blocks (from `uploadCollabResource` results) to a collab note. */
+  appendCollabEmbeds (docGuid, items, opts) { return appendCollabEmbeds(this, docGuid, items, opts) }
+
+  /** One-shot: upload files AND insert matching embed blocks in a collab note. */
+  collabUploadAndEmbed (docGuid, items, opts) { return collabUploadAndEmbed(this, docGuid, items, opts) }
 
   /** Low-level: get an editor token. */
   getCollaborationToken (docGuid) {

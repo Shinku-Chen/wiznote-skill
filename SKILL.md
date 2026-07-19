@@ -337,41 +337,64 @@ Supported Markdown constructs (write + read):
 
 Not yet supported: formula/audio/drawio/encrypted/webpage embed blocks (roundtrip only).
 
-### Media embeds in collab notes — schema known, upload unsolved
+### Media embeds in collab notes (upload + embed)
 
-Reverse-engineered from a client-inserted embed (2026-07-19). Collab notes
-store media as `embed` blocks with `src` **content-addressed by hash**:
+Collab notes store media as `embed` blocks with a content-addressed `src`.
+Use the helper:
 
-```json
-{
-  "id": "_mG1iwFWx",
-  "type": "embed",
-  "embedType": "image",           // "image" | "audio" | "office" (generic file: zip/pdf/doc/…)
-  "align": "center",
-  "quoted": false,
-  "embedData": {
-    "src":         "<base64url(sha256(bytes))>.<ext>",
-    "fileName":    "<original user-facing name>",
-    "fileSize":    <bytes>,
-    "fileType":    "<MIME>",       // "image/jpeg" | "audio/wav" | "application/x-zip-compressed"
-    "previewType": "card"
-  }
-}
-```
-
-**Verified**: hashing `audio.wav` (8044 B) yields the exact `src` the WizNote
-client wrote. Compute with:
 ```js
-const src = crypto.createHash('sha256').update(buf).digest('base64')
-  .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') + '.' + ext
+await wiz.collabUploadAndEmbed(docGuid, [
+  '/abs/path/pic.png',
+  { path: '/abs/path/a.wav', name: 'song.wav' },  // override display name
+  '/abs/path/pkg.zip'
+], { position: 'append' })   // or 'prepend'
 ```
-(see `scripts/probe-hash.mjs`).
 
-**Upload endpoint still unsolved.** `POST /editor/:kb/:doc/resources` (multipart) returns 403 for every auth combo tried; `POST|PUT /editor/:kb/:doc/resources/<hash>.<ext>` (raw bytes) returns 500. The routes exist but the correct contract (WS binary frames? separate object-storage endpoint? extra header?) hasn't been found. Until we crack it, agents CANNOT programmatically embed new media into a collab note — refer users to drag&drop in the WizNote client.
+Auto-picks the embed kind by MIME:
+- `image/*` → `embedType: image` (renders inline)
+- `audio/*` → `embedType: audio` (inline audio card)
+- `video/*` → `embedType: video`
+- everything else → `embedType: office` (generic downloadable file card, used for zip/pdf/doc/…)
 
-**Workarounds that DO work today for collab notes:**
-- **Attachments** via `kb.uploadAttachment(...)` — the attachment panel is note-type-agnostic; users see the file listed and can click to download in the client.
-- If the collab note already has a resource with the target hash (e.g. inserted earlier by the user), reference it in a new embed block via the schema above without re-uploading.
+The helper preserves existing note content — it fetches current blocks,
+appends the new embeds, and rewrites the doc via a sharejs delete+create op.
+Existing text/heading/table blocks stay intact.
+
+Low-level: `wiz.uploadCollabResource(docGuid, buffer, name)` returns
+`{src, fileName, fileSize, fileType, hash}`; `wiz.appendCollabEmbeds(docGuid, items)`
+splices those into the note.
+
+CLI: `wiz collab embed <docGuid> <file>... [--prepend]`.
+
+**Under the hood** (in case something breaks and you need to poke):
+
+1. `POST /editor/:kb/:doc/resources/<hash>` with JSON body `{name, size}` — registers a resource slot on the doc for this content hash (201, empty array).
+2. `POST /editor/:kb/:doc/resources` with **multipart** body:
+   - `file-size`: byte count as string
+   - `file-hash`: base64url(sha256(bytes)) — **no extension**
+   - `file`: the bytes (Blob), filename preserved
+   - Response: 201 `["<hash>.<ext>"]` — the final `src` for the embed block.
+3. Both steps require these HEADERS (NOT cookies):
+   - `x-live-editor-token`: value from `getCollaborationToken`
+   - `x-live-editor-base-url`: `Buffer.from(kbServer+'/editor/'+kb+'/'+doc).toString('base64')`
+4. Insert an `embed` block via WebSocket sharejs op:
+   ```json
+   {
+     "id": "<random>", "type": "embed", "embedType": "image|audio|video|office",
+     "align": "center", "quoted": false,
+     "embedData": {
+       "src": "<hash>.<ext>",
+       "fileName": "<display name>",
+       "fileSize": <bytes>,
+       "fileType": "<MIME>",
+       "previewType": "card"
+     }
+   }
+   ```
+
+Content-addressing (`src = base64url(sha256(bytes)) + '.' + ext`) means the
+server dedupes across the whole KS instance — re-uploading the same bytes to
+a new note is essentially free.
 
 CLI: `wiz collab new "<title>" -f md.md [--category=/x/] [--tags=a,b]`, `wiz collab read <docGuid>`, `wiz collab update <docGuid> -f md.md`.
 

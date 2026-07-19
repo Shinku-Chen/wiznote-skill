@@ -10,7 +10,8 @@ export { markdownToBlocks, blocksToMarkdown, parseInline } from './blocks.js'
 export {
   createCollaborationNote, updateCollaborationNote, readCollaborationNote,
   getCollaborationToken, fetchCollaborationContent, writeCollaborationBlocks,
-  listCollaborationResources, downloadCollaborationResource
+  listCollaborationResources, downloadCollaborationResource,
+  uploadCollabResource, appendCollabEmbeds, collabUploadAndEmbed
 } from './collaboration.js'
 export { uploadAndEmbed, attachAndLink } from './embed.js'
 export { wrapMarkdown, unwrapMarkdown, createMarkdownNote, updateMarkdownNote, readMarkdownNote } from './markdown.js'

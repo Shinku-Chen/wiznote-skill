@@ -59,6 +59,9 @@ function usage () {
   collab read <docGuid>                   Read collab note as Markdown
   collab update <docGuid> -f md.md [--title="new"]
                                           Overwrite collab note with Markdown file
+  collab embed <docGuid> <file>... [--prepend]
+                                          Upload files to collab note and insert
+                                          <img>/<audio>/<video>/<file-card> blocks
 
 Environment overrides: WIZ_USER, WIZ_TOKEN, WIZ_KB_GUID, WIZ_KB_SERVER`)
 }
@@ -318,6 +321,18 @@ async function main () {
               docGuid: positional[0], markdown, title: flags.title
             })
             console.log(JSON.stringify(r, null, 2))
+            break
+          }
+          case 'embed': {
+            if (positional.length < 2) { console.error('usage: wiz collab embed <docGuid> <file>... [--prepend]'); process.exit(1) }
+            const [docGuid, ...files] = positional
+            const r = await wiz.collabUploadAndEmbed(docGuid, files, {
+              position: flags.prepend ? 'prepend' : 'append'
+            })
+            for (const u of r.uploaded) {
+              console.log(`  ${u.fileName}  ${u.fileSize}B  ${u.fileType}  src=${u.src}`)
+            }
+            console.error(`— ${r.uploaded.length} uploaded and embedded into ${docGuid}`)
             break
           }
           default:
