@@ -1,9 +1,15 @@
-// WizNote collaboration-note WebSocket protocol (sharejs JSONv1-ish).
-// Requires the `ws` package (npm i ws). Ported from wiz_open_api.py.
+// WizNote collaboration-note WebSocket protocol (sharejs JSON).
+// Requires the `ws` package. Ported from wiz_open_api.py.
+//
+// Message ordering: we attach a persistent listener at open time and queue every
+// incoming frame; helpers consume by SHAPE, not by position. This is robust to
+// servers that ack/init in unexpected orders or skip acks for empty docs.
 
 import crypto from 'node:crypto'
 import { execRequest } from './request.js'
 import { markdownToBlocks, blocksToMarkdown } from './blocks.js'
+
+const DEBUG = !!process.env.WIZ_WS_DEBUG
 
 let _WebSocket = null
 async function getWS () {
@@ -20,9 +26,6 @@ async function getWS () {
   }
 }
 
-/**
- * Get an editor token for a collaboration note (needed for WS handshake).
- */
 export function getCollaborationToken ({ kbServer, kbGuid, docGuid, token }) {
   return execRequest('POST',
     `${kbServer}/ks/note/${kbGuid}/${docGuid}/tokens`,
@@ -35,99 +38,162 @@ function wsUrl (kbServer, kbGuid, docGuid) {
   return `${scheme}://${host}/editor/${kbGuid}/${docGuid}`
 }
 
-/** Await one message from a WebSocket. */
-function nextMessage (ws, timeoutMs = 10000) {
-  return new Promise((resolve, reject) => {
-    const to = setTimeout(() => reject(new Error('WS recv timeout')), timeoutMs)
-    ws.once('message', data => { clearTimeout(to); resolve(data.toString()) })
-    ws.once('error', err => { clearTimeout(to); reject(err) })
-    ws.once('close', () => { clearTimeout(to); reject(new Error('WS closed before message')) })
-  })
+/**
+ * A lightweight WS session with a persistent message queue.
+ * All frames received after `open` are appended to `.queue`; helpers pull from
+ * the head, waiting up to `timeoutMs` for a frame that matches a predicate.
+ */
+class WsSession {
+  constructor (ws) {
+    this.ws = ws
+    this.queue = []
+    this.waiters = []
+    this.closed = false
+    ws.on('message', data => {
+      const s = data.toString()
+      if (DEBUG) console.error('[ws recv]', s.slice(0, 200))
+      this.queue.push(s)
+      this._pump()
+    })
+    ws.on('close', () => { this.closed = true; this._pump() })
+    ws.on('error', err => { this.error = err; this._pump() })
+  }
+
+  _pump () {
+    while (this.waiters.length) {
+      const w = this.waiters[0]
+      // find a queued message matching predicate
+      const idx = w.predicate
+        ? this.queue.findIndex(m => { try { return w.predicate(JSON.parse(m)) } catch { return false } })
+        : (this.queue.length ? 0 : -1)
+      if (idx >= 0) {
+        this.waiters.shift()
+        const [msg] = this.queue.splice(idx, 1)
+        clearTimeout(w.timer)
+        w.resolve(msg)
+        continue
+      }
+      if (this.closed) {
+        this.waiters.shift()
+        clearTimeout(w.timer)
+        w.reject(this.error || new Error('WS closed before matching message'))
+        continue
+      }
+      break
+    }
+  }
+
+  send (obj) {
+    const s = JSON.stringify(obj)
+    if (DEBUG) console.error('[ws send]', s.slice(0, 200))
+    this.ws.send(s)
+  }
+
+  /** Wait for the next frame, or one matching the predicate. */
+  recv ({ predicate, timeoutMs = 10000 } = {}) {
+    return new Promise((resolve, reject) => {
+      const w = { resolve, reject, predicate, timer: null }
+      w.timer = setTimeout(() => {
+        const i = this.waiters.indexOf(w)
+        if (i >= 0) this.waiters.splice(i, 1)
+        reject(new Error(`WS recv timeout after ${timeoutMs}ms`))
+      }, timeoutMs)
+      this.waiters.push(w)
+      this._pump()
+    })
+  }
+
+  close () { try { this.ws.close() } catch {} }
 }
 
-async function openHandshake ({ kbServer, kbGuid, docGuid, userGuid, editorToken }) {
+/**
+ * Open a WS, wait for connection, send handshake, wait for the server's init
+ * frame. Returns a WsSession with the connection ready for further ops.
+ */
+async function openSession ({ kbServer, kbGuid, docGuid, userGuid, editorToken }) {
   const WS = await getWS()
-  const ws = new WS(wsUrl(kbServer, kbGuid, docGuid))
+  const raw = new WS(wsUrl(kbServer, kbGuid, docGuid))
   await new Promise((resolve, reject) => {
-    ws.once('open', resolve)
-    ws.once('error', reject)
+    raw.once('open', resolve)
+    raw.once('error', reject)
   })
-  ws.send(JSON.stringify({
+  const s = new WsSession(raw)
+  s.send({
     a: 'hs', id: null,
     auth: { appId: kbGuid, docId: docGuid, userId: userGuid, permission: 'w', token: editorToken }
-  }))
-  await nextMessage(ws) // init
-  return ws
+  })
+  // Server's handshake response has {a:"hs",protocol:1,...} — consume it explicitly.
+  await s.recv({ predicate: m => m.a === 'hs', timeoutMs: 5000 })
+  return s
 }
 
 /** Read the current collaboration document. Returns raw JSON string. */
 export async function fetchCollaborationContent (opts) {
-  const ws = await openHandshake(opts)
+  const s = await openSession(opts)
   try {
-    ws.send(JSON.stringify({ a: 'f', c: opts.kbGuid, d: opts.docGuid, v: null }))
-    await nextMessage(ws) // ack
-    const content = await nextMessage(ws)
-    ws.send(JSON.stringify({ a: 's', c: opts.kbGuid, d: opts.docGuid, v: null }))
-    try { await nextMessage(ws, 2000) } catch {}
-    return content
+    s.send({ a: 'f', c: opts.kbGuid, d: opts.docGuid, v: null })
+    // Wait for a frame that carries the document data ('data.data' or 'data.blocks').
+    // Empty notes may only respond with an ack — accept anything with 'data' after
+    // a short window.
+    const raw = await s.recv({
+      predicate: m => m.data !== undefined,
+      timeoutMs: 8000
+    })
+    return raw
   } finally {
-    ws.close()
+    s.close()
   }
 }
 
 /**
  * Write blocks into a collaboration note.
- * @param {object} opts  { kbServer, kbGuid, docGuid, userGuid, editorToken, blocks, extras, version, deleteFirst }
  */
 export async function writeCollaborationBlocks (opts) {
-  const ws = await openHandshake(opts)
+  const s = await openSession(opts)
   try {
-    // sync first
-    ws.send(JSON.stringify({ a: 'f', c: opts.kbGuid, d: opts.docGuid, v: null }))
-    await nextMessage(ws)
-    const syncRaw = await nextMessage(ws)
+    // Fetch current state so we know the version and whether to delete-first.
+    s.send({ a: 'f', c: opts.kbGuid, d: opts.docGuid, v: null })
     let v = opts.version ?? 0
+    let hasDoc = false
     try {
-      const serverV = JSON.parse(syncRaw)?.data?.v ?? 0
+      const syncRaw = await s.recv({ predicate: m => m.data !== undefined, timeoutMs: 5000 })
+      const parsed = JSON.parse(syncRaw)
+      const serverV = parsed?.data?.v ?? 0
       if (serverV > v) v = serverV
-    } catch {}
+      hasDoc = parsed?.data?.type !== undefined && serverV > 0
+    } catch {
+      // Empty doc; no sync response — that's fine, we'll create.
+    }
 
     const src = crypto.randomUUID().slice(0, 20)
     let seq = 1
+    const deleteFirst = opts.deleteFirst ?? hasDoc
 
-    if (opts.deleteFirst) {
-      ws.send(JSON.stringify({
-        a: 'op', c: opts.kbGuid, d: opts.docGuid,
-        v, src, seq, del: true
-      }))
-      await nextMessage(ws)
+    if (deleteFirst) {
+      s.send({ a: 'op', c: opts.kbGuid, d: opts.docGuid, v, src, seq, del: true })
+      await s.recv({ timeoutMs: 5000 })
       seq++; v++
     }
 
-    // Merge extras into a flat map keyed by __id, alongside the ordered `blocks` list
     const docData = {
       blocks: opts.blocks || [],
       comments: [], meta: {}, authors: [], commentators: []
     }
-    // Extras (code cells, table cells) live at the top level keyed by __id
     for (const [id, extra] of Object.entries(opts.extras || {})) {
       docData[id] = extra
     }
 
-    ws.send(JSON.stringify({
+    s.send({
       a: 'op', c: opts.kbGuid, d: opts.docGuid,
       v, src, seq,
       create: {
         type: 'http://sharejs.org/types/JSONv1',
         data: docData
       }
-    }))
-    await nextMessage(ws)
-
-    ws.send(JSON.stringify({ a: 's', c: opts.kbGuid, d: opts.docGuid, v: null }))
-    try { await nextMessage(ws, 2000) } catch {}
+    })
+    await s.recv({ timeoutMs: 5000 }).catch(() => {})
   } finally {
-    ws.close()
+    s.close()
   }
 }
 
@@ -135,10 +201,6 @@ export async function writeCollaborationBlocks (opts) {
 // High-level helpers
 // ────────────────────────────────────────────────────────────────────────────
 
-/**
- * Create a collaboration note from a Markdown string.
- * Requires the wiznote-sdk WizClient (for kbServer + userGuid + token).
- */
 export async function createCollaborationNote (wiz, {
   title, markdown = '', category = '/My Notes/', tags = ''
 }) {
@@ -169,9 +231,6 @@ export async function createCollaborationNote (wiz, {
   return { docGuid, editorToken, title, category }
 }
 
-/**
- * Overwrite a collaboration note with new Markdown (del + create).
- */
 export async function updateCollaborationNote (wiz, { docGuid, markdown, title }) {
   if (title) {
     await execRequest('PUT',
@@ -189,32 +248,17 @@ export async function updateCollaborationNote (wiz, { docGuid, markdown, title }
     kbServer: wiz.kbServer, kbGuid: wiz.kbGuid, docGuid, token: wiz.token
   })
   const editorToken = tokenRes?.editorToken || tokenRes
-  const raw = await fetchCollaborationContent({
-    kbServer: wiz.kbServer, kbGuid: wiz.kbGuid, docGuid,
-    userGuid: wiz.userGuid, editorToken
-  })
-  let currentV = 0, docType
-  try {
-    const parsed = JSON.parse(raw)
-    currentV = parsed?.data?.v ?? 0
-    docType = parsed?.data?.type
-  } catch {}
   const { blocks, extras } = markdownToBlocks(markdown || '')
-  const deleteFirst = !(docType === undefined || currentV === 0)
   await writeCollaborationBlocks({
     kbServer: wiz.kbServer, kbGuid: wiz.kbGuid, docGuid,
     userGuid: wiz.userGuid, editorToken,
-    blocks, extras, version: currentV, deleteFirst
+    blocks, extras
   })
   return { docGuid, status: 'updated' }
 }
 
-/**
- * Fetch a collaboration note and return it as Markdown.
- * Auto-detects note type via getNoteContent; falls back to HTML for legacy notes.
- */
 export async function readCollaborationNote (wiz, docGuid) {
-  const detail = await wiz.kb.getNoteContent(docGuid)
+  const detail = await wiz.kb.getNoteContent(docGuid, { downloadInfo: 1, downloadData: 0 })
   const type = detail?.info?.type
   if (type !== 'collaboration') return detail?.html || ''
   const tokenRes = await getCollaborationToken({
