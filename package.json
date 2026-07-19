@@ -7,7 +7,7 @@
   "engines": { "node": ">=18" },
   "scripts": {
     "setup": "npm i --no-save keytar ws || echo 'setup: one or more optional deps failed to install — SDK degrades gracefully'",
-    "test": "node --test test/"
+    "test": "node --test"
   },
   "optionalDependencies": {
     "keytar": "^7.9.0",

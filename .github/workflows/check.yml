@@ -26,4 +26,4 @@ jobs:
       - name: smoke import
         run: node -e "import('./src/index.js').then(m => console.log('exports:', Object.keys(m).join(', ')))"
       - name: run tests
-        run: node --test test/
+        run: node --test
