@@ -146,10 +146,36 @@ export class KnowledgeBaseApi {
 
   // ── Resources (images embedded in note HTML) ───────────────────────────
 
-  // NOTE: resource upload endpoint (`POST /ks/resource/upload/*`) returned
-  // 500 / `kbGuid is not match` in probing against the public server; the
-  // upstream contract is unclear, so we don't expose an upload method here.
-  // Read-side (list / getUrl / download) works and is kept below.
+  /**
+   * Upload a binary as a note resource (image, file — any blob).
+   * Server returns `{ name, url }` where `url` is a relative path (e.g.
+   * `index_files/<name>`) to be embedded in the note HTML.
+   *
+   * Per official docs: multipart field is `data` (not `file`); the form
+   * MUST also carry `kbGuid` and `docGuid` fields, else the server rejects
+   * with `kbGuid is not match`.
+   *
+   * @param {string} docGuid
+   * @param {Buffer|Blob} fileData
+   * @param {string} name  filename (e.g. `pic.png`); used as multipart filename
+   */
+  uploadResource (docGuid, fileData, name) {
+    if (!name) throw new Error('uploadResource requires a name')
+    const form = new FormData()
+    let blob = fileData
+    if (typeof Buffer !== 'undefined' && Buffer.isBuffer(fileData)) blob = new Blob([fileData])
+    form.append('kbGuid', this.kbGuid)
+    form.append('docGuid', docGuid)
+    form.append('data', blob, name)
+    return execRequest('POST',
+      this._kb(`/ks/resource/upload/${this.kbGuid}/${docGuid}`),
+      { body: form, query: { clientType: 'web', clientVersion: '4.0' }, token: this._t() })
+  }
+
+  /** Alias, historical name — same call. */
+  uploadImage (docGuid, fileData, name) {
+    return this.uploadResource(docGuid, fileData, name)
+  }
 
   /**
    * List all resources embedded in a note (images, css, files).
@@ -254,17 +280,61 @@ export class KnowledgeBaseApi {
   }
 
   // ── Attachments (first-class file attachments) ─────────────────────────
-  //
-  // Only `listAttachments` is exposed. The `POST /ks/attachment/upload/*` and
-  // `GET /ks/attachment/download/*` endpoints referenced by earlier revisions
-  // return 404 on the public server (probed 2026-07-19). The correct upload/
-  // download contract for attachments hasn't been reverse-engineered yet;
-  // avoid exposing methods that never worked.
 
   /** List a note's attachments (metadata: name/size/hash/attGuid). */
   listAttachments (docGuid) {
     return execRequest('GET',
       this._kb(`/ks/note/attachments/${this.kbGuid}/${docGuid}`),
       { query: { extra: 1, clientType: 'web', clientVersion: '4.0' }, token: this._t() })
+  }
+
+  /**
+   * Upload a local file as a note attachment. Returns the server response
+   * including the new `att.attGuid` which subsequent download/delete calls
+   * need.
+   *
+   * The endpoint is `attachment/create` (not `upload`). Form MUST carry
+   * `kbGuid` + `docGuid` fields alongside the file — WizNote validates
+   * those against the path segments before accepting the blob.
+   *
+   * @param {string} docGuid
+   * @param {Buffer|Blob} fileData
+   * @param {string} name attachment filename
+   */
+  uploadAttachment (docGuid, fileData, name) {
+    if (!name) throw new Error('uploadAttachment requires a name')
+    const form = new FormData()
+    let blob = fileData
+    if (typeof Buffer !== 'undefined' && Buffer.isBuffer(fileData)) blob = new Blob([fileData])
+    form.append('kbGuid', this.kbGuid)
+    form.append('docGuid', docGuid)
+    form.append('data', blob, name)
+    return execRequest('POST',
+      this._kb(`/ks/attachment/create/${this.kbGuid}/${docGuid}`),
+      { body: form, query: { clientType: 'web', clientVersion: '4.0' }, token: this._t() })
+  }
+
+  /**
+   * Download an attachment as a Buffer.
+   * @returns {Promise<Buffer>}
+   */
+  async downloadAttachment (docGuid, attGuid) {
+    const url = this._kb(`/ks/attachment/download/${this.kbGuid}/${docGuid}/${attGuid}`) +
+      '?clientType=web&clientVersion=4.0'
+    const res = await fetch(url, { headers: { 'X-Wiz-Token': this._t() } })
+    if (!res.ok) throw new Error(`attachment download failed: HTTP ${res.status}`)
+    return Buffer.from(await res.arrayBuffer())
+  }
+
+  /** Raw download URL. Note: browsers can't use this directly — needs X-Wiz-Token header. */
+  getAttachmentUrl (docGuid, attGuid) {
+    return `${this.baseUrl}/ks/attachment/download/${this.kbGuid}/${docGuid}/${attGuid}`
+  }
+
+  /** Delete an attachment by attGuid. */
+  deleteAttachment (docGuid, attGuid) {
+    return execRequest('DELETE',
+      this._kb(`/ks/attachment/delete/${this.kbGuid}/${docGuid}/${attGuid}`),
+      { query: { clientType: 'web', clientVersion: '4.0' }, token: this._t() })
   }
 }

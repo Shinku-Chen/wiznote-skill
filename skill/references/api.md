@@ -68,22 +68,31 @@ Token is refreshed with `GET /as/user/keep`; invalidated with `GET /as/user/logo
 | PUT    | `/ks/tag/move/:kbGuid` | change parent |
 | DELETE | `/ks/tag/delete/:kbGuid/:tagGuid` | delete |
 
-### Knowledge Base — resources / attachments
+### Knowledge Base — resources
 
-Upload endpoints have NOT been verified against a live server. Probing on the
-public cloud (`vipkshttps14.wiz.cn`, 2026-07-19) returned:
+| HTTP | Path | Purpose |
+|---|---|---|
+| POST | `/ks/resource/upload/:kbGuid/:docGuid` | upload image/blob for legacy notes; multipart body: `kbGuid`, `docGuid`, `data` (file). Response `{ name, url }` — embed `url` as `<img src="index_files/…">` and `updateNote(html)`. |
+| GET  | `/ks/note/download/:kbGuid/:docGuid` | resources returned in `.resources[]` with signed URLs (`resources[i].url` requires no auth header). |
 
-| HTTP | Path | Observed | Notes |
-|---|---|---|---|
-| POST | `/ks/resource/upload/:kbGuid/:docGuid` | 500 or `kbGuid is not match` | probable contract mismatch |
-| POST | `/ks/attachment/upload/:kbGuid/:docGuid` | 404 | endpoint absent |
-| GET  | `/ks/attachment/download/:kbGuid/:docGuid/:attGuid` | 404 | endpoint absent |
-| GET  | `/ks/note/attachments/:kbGuid/:docGuid` | 200 | listing works |
-
-Reading resources embedded in a note is done via `GET /ks/note/download/:kb/:doc`
-(the `resources` field of the response contains signed download URLs). Reading
-collaboration-note resources uses `{kbServer}/editor/:kb/:doc/resources/:name`
+For collaboration notes, resources live at `{kbServer}/editor/:kb/:doc/resources/:name`
 with the `x-live-editor-token` cookie — see `src/collaboration.js`.
+
+### Knowledge Base — attachments (first-class)
+
+| HTTP | Path | Purpose |
+|---|---|---|
+| GET    | `/ks/note/attachments/:kbGuid/:docGuid` | list `[{ attGuid, name, size, dataMd5, dataModified }]` |
+| POST   | `/ks/attachment/create/:kbGuid/:docGuid` | multipart body: `kbGuid`, `docGuid`, `data` (file). Response contains `att.attGuid`. |
+| GET    | `/ks/attachment/download/:kbGuid/:docGuid/:attGuid` | raw bytes (requires `X-Wiz-Token` header) |
+| DELETE | `/ks/attachment/delete/:kbGuid/:docGuid/:attGuid` | |
+| GET    | `/ks/object/download/:kbGuid/:docGuid?objType=attachment&objId=:attGuid` | alt download; returns a zip container (used by sync clients) |
+
+Both resource and attachment `POST` MUST include `kbGuid` + `docGuid` as
+sibling multipart form fields alongside the `data` file — the server
+validates them against the URL path and returns
+`{"returnCode":2000,"returnMessage":"kbGuid is not match"}` otherwise.
+Field must be named `data` (not `file`).
 
 ## Response envelope
 

@@ -31,7 +31,11 @@ function usage () {
   mv <docGuid> <category>       Move note to a different folder
   rename <docGuid> <title>      Change note title
 
-  attach ls <docGuid>                     List a note's attachments (upload/download not yet supported)
+  attach ls <docGuid>                     List a note's attachments
+  attach put <docGuid> <file> [name]      Upload a local file as attachment
+  attach get <docGuid> <attGuid> [-o out] Download attachment (stdout if no -o)
+  attach rm  <docGuid> <attGuid>          Delete an attachment
+  attach url <docGuid> <attGuid>          Print raw download URL (needs X-Wiz-Token header)
 
   res ls <docGuid>                        List a note's embedded resources (images/files)
   res get <docGuid> <name> [-o out]       Download one resource
@@ -364,13 +368,40 @@ async function main () {
             }
             break
           }
-          case 'put':
-          case 'get':
-          case 'url':
-            console.error(`\`wiz attach ${sub}\` is not supported: WizNote's attachment upload/download endpoints`)
-            console.error('are not currently reachable from this skill. Only `wiz attach ls` works.')
-            process.exit(2)
+          case 'put': {
+            if (rest.length < 3) { console.error('usage: wiz attach put <docGuid> <file> [name]'); process.exit(1) }
+            const filePath = rest[2]
+            const name = rest[3] || path.basename(filePath)
+            const buf = await fs.readFile(filePath)
+            const r = await wiz.kb.uploadAttachment(rest[1], buf, name)
+            console.log(JSON.stringify(r, null, 2))
             break
+          }
+          case 'get': {
+            if (rest.length < 3) { console.error('usage: wiz attach get <docGuid> <attGuid> [-o out]'); process.exit(1) }
+            const oIdx = rest.indexOf('-o')
+            const outPath = oIdx > -1 ? rest[oIdx + 1] : null
+            const buf = await wiz.kb.downloadAttachment(rest[1], rest[2])
+            if (outPath) {
+              await fs.writeFile(outPath, buf)
+              console.log(`Wrote ${buf.length} B → ${outPath}`)
+            } else {
+              process.stdout.write(buf)
+            }
+            break
+          }
+          case 'rm': {
+            if (rest.length < 3) { console.error('usage: wiz attach rm <docGuid> <attGuid>'); process.exit(1) }
+            await wiz.kb.deleteAttachment(rest[1], rest[2])
+            console.log(`Deleted ${rest[2]}`)
+            break
+          }
+          case 'url': {
+            if (rest.length < 3) { console.error('usage: wiz attach url <docGuid> <attGuid>'); process.exit(1) }
+            console.log(wiz.kb.getAttachmentUrl(rest[1], rest[2]))
+            console.log('# Requires: X-Wiz-Token: <token>')
+            break
+          }
           default:
             console.error('unknown attach subcommand:', sub)
             process.exit(1)
