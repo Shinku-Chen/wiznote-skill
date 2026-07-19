@@ -2,6 +2,8 @@
 import { WizClient } from '../src/index.js'
 import { resolveCredentials } from '../src/credentials.js'
 import readline from 'node:readline'
+import fs from 'node:fs/promises'
+import path from 'node:path'
 
 const [, , cmd, ...rest] = process.argv
 
@@ -20,6 +22,14 @@ function usage () {
   tags               List all tags
   categories         List category tree
   search <keyword>   Search notes
+
+  mv <docGuid> <category>       Move note to a different folder
+  rename <docGuid> <title>      Change note title
+
+  attach ls <docGuid>                     List a note's attachments
+  attach put <docGuid> <file> [name]      Upload a local file as attachment
+  attach get <docGuid> <attGuid> [-o]     Download attachment (default: name from list)
+  attach url <docGuid> <attGuid>          Print raw download URL (needs X-Wiz-Token header)
 
 Environment overrides: WIZ_USER, WIZ_TOKEN, WIZ_KB_GUID, WIZ_KB_SERVER`)
 }
@@ -41,13 +51,22 @@ async function main () {
   try {
     switch (cmd) {
       case 'login': {
+        // Support: wiz login --endpoint=https://your-on-prem-host
+        const flags = {}
+        for (const a of rest) {
+          const m = a.match(/^--([^=]+)=(.*)$/)
+          if (m) flags[m[1]] = m[2]
+        }
+        const endpoint = flags.endpoint || process.env.WIZ_ENDPOINT
+        if (endpoint) console.log(`Using endpoint: ${endpoint}`)
         const userId = await ask('WizNote userId (email): ')
         const password = await ask('Password: ', { silent: true })
-        const wiz = await WizClient.login({ userId: userId.trim(), password })
+        const wiz = await WizClient.login({ userId: userId.trim(), password, endpoint })
         console.log(`\nLogged in as ${wiz.userId}`)
-        console.log(`  kbGuid   : ${wiz.kbGuid}`)
-        console.log(`  kbServer : ${wiz.kbServer}`)
-        console.log(`  token    : stored in OS Keychain (or ~/.config/wiznote/session.json if keytar unavailable)`)
+        console.log(`  kbGuid       : ${wiz.kbGuid}`)
+        console.log(`  kbServer     : ${wiz.kbServer}`)
+        console.log(`  accountBaseUrl: ${wiz.accountBaseUrl}`)
+        console.log(`  token        : stored in OS Keychain (or ~/.config/wiznote/session.json if keytar unavailable)`)
         break
       }
       case 'logout': {
@@ -128,6 +147,67 @@ async function main () {
         const wiz = await WizClient.fromStored()
         const r = await wiz.kb.searchNote({ ss: rest.join(' ') })
         for (const n of r || []) console.log(`${n.docGuid || n.guid}  ${n.title}`)
+        break
+      }
+      case 'mv': {
+        if (rest.length < 2) { console.error('usage: wiz mv <docGuid> <category>'); process.exit(1) }
+        const wiz = await WizClient.fromStored()
+        await wiz.kb.moveNote(rest[0], rest[1])
+        console.log(`Moved ${rest[0]} → ${rest[1]}`)
+        break
+      }
+      case 'rename': {
+        if (rest.length < 2) { console.error('usage: wiz rename <docGuid> <newTitle>'); process.exit(1) }
+        const wiz = await WizClient.fromStored()
+        await wiz.kb.renameNote(rest[0], rest.slice(1).join(' '))
+        console.log(`Renamed ${rest[0]}`)
+        break
+      }
+      case 'attach': {
+        const sub = rest[0]
+        const wiz = await WizClient.fromStored()
+        switch (sub) {
+          case 'ls': {
+            if (!rest[1]) { console.error('usage: wiz attach ls <docGuid>'); process.exit(1) }
+            const list = await wiz.kb.listAttachments(rest[1])
+            for (const a of list || []) {
+              console.log(`${a.attGuid || a.guid}  ${a.name}  ${a.size ?? '?'}B`)
+            }
+            break
+          }
+          case 'put': {
+            if (rest.length < 3) { console.error('usage: wiz attach put <docGuid> <file> [name]'); process.exit(1) }
+            const filePath = rest[2]
+            const name = rest[3] || path.basename(filePath)
+            const buf = await fs.readFile(filePath)
+            const r = await wiz.kb.uploadAttachment(rest[1], buf, name)
+            console.log(JSON.stringify(r, null, 2))
+            break
+          }
+          case 'get': {
+            // wiz attach get <docGuid> <attGuid> [-o outPath]
+            if (rest.length < 3) { console.error('usage: wiz attach get <docGuid> <attGuid> [-o out]'); process.exit(1) }
+            const oIdx = rest.indexOf('-o')
+            const outPath = oIdx > -1 ? rest[oIdx + 1] : null
+            const buf = await wiz.kb.downloadAttachment(rest[1], rest[2])
+            if (outPath) {
+              await fs.writeFile(outPath, buf)
+              console.log(`Wrote ${buf.length} bytes → ${outPath}`)
+            } else {
+              process.stdout.write(buf)
+            }
+            break
+          }
+          case 'url': {
+            if (rest.length < 3) { console.error('usage: wiz attach url <docGuid> <attGuid>'); process.exit(1) }
+            console.log(wiz.kb.getAttachmentUrl(rest[1], rest[2]))
+            console.log('# Requires: X-Wiz-Token: <token>')
+            break
+          }
+          default:
+            console.error('unknown attach subcommand:', sub)
+            process.exit(1)
+        }
         break
       }
       default:

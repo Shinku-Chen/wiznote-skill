@@ -1,6 +1,6 @@
 ---
 name: wiznote-api
-description: WizNote (为知笔记) REST API skill. Trigger when the user asks about WizNote / 为知 login, note CRUD, categories, tags, resource upload, search, kbGuid, kbServer, X-Wiz-Token. Covers auth flow, credential storage (OS Keychain > env > 0600 file), and every documented endpoint. This skill ships runnable Node scripts in the same directory — invoke them as `node ${SKILL_DIR}/scripts/wiz.js <cmd>`. Do NOT hardcode credentials, do NOT ask the user to paste passwords into chat; always route through the login script which stores tokens in the OS Keychain.
+description: 为知笔记 (WizNote / Wiz) REST API skill。用户提到"为知""为知笔记""wiz""WizNote""wiz.cn"或需要操作笔记时触发,涵盖:登录、笔记的增删改查(create/read/update/delete)、笔记搜索、文件夹/分类(category)管理、标签(tag)管理、图片/附件上传、kbGuid/kbServer/X-Wiz-Token/token 相关问题、私有化/自建服务器(endpoint)配置、凭据存储(OS Keychain / 环境变量 / 配置文件)。支持公网 as.wiz.cn 和企业内网自建服务器两种模式。Skill 自带可执行 Node 脚本 `scripts/wiz.js`,通过 `node ${SKILL_DIR}/scripts/wiz.js <cmd>` 调用。铁律:绝不硬编码凭据,绝不让用户在对话里贴密码,一律用 `wiz login` 交互登录并把 token 存进 OS Keychain。
 ---
 
 # WizNote API Skill
@@ -17,12 +17,20 @@ git clone https://github.com/Shinku-Chen/wiznote-skill.git ~/.claude/skills/wizn
 
 # Cursor
 git clone https://github.com/Shinku-Chen/wiznote-skill.git .cursor/skills/wiznote-api
+
+# Workbuddy / OpenClaw (Windows: %USERPROFILE%\.workbuddy\skills\)
+git clone https://github.com/Shinku-Chen/wiznote-skill.git ~/.workbuddy/skills/wiznote-api
 ```
 
 Optional (recommended, enables OS Keychain):
 ```bash
 cd ~/.claude/skills/wiznote-api && npm run setup
 ```
+
+## Public cloud vs on-premise
+
+- **Public cloud** (default): AS at `https://as.wiz.cn`, KS returned dynamically after login.
+- **On-premise / 私有化**: pass `--endpoint=https://your-host:port` to `wiz login`, or set `WIZ_ENDPOINT`. Both AS and KS resolve to that single host.
 
 ## First-time login (interactive, once per machine)
 
@@ -57,9 +65,11 @@ If you're writing a script that the user will run, put it in `scripts/` and refe
 ## Credential resolution order (`resolveCredentials`)
 
 1. Explicit args to `WizClient`
-2. Environment: `WIZ_TOKEN`, `WIZ_KB_GUID`, `WIZ_KB_SERVER`, `WIZ_USER`
+2. Environment: `WIZ_TOKEN`, `WIZ_KB_GUID`, `WIZ_KB_SERVER`, `WIZ_USER`, `WIZ_ACCOUNT_URL`, `WIZ_ENDPOINT`
 3. OS Keychain
 4. `~/.config/wiznote/session.json`
+
+`WIZ_ENDPOINT` is a shortcut for on-premise: sets both `accountBaseUrl` and `kbServer` defaults to the same host.
 
 If `WizClient.fromStored()` throws "token not found", instruct the user to run `wiz login`. **Do NOT prompt for the password inside the chat.** Full rationale: [skill/references/credentials.md](skill/references/credentials.md).
 
@@ -101,12 +111,48 @@ If `WizClient.fromStored()` throws "token not found", instruct the user to run `
 | `kb.moveTag({ tagGuid, parentTagGuid })` | `PUT /ks/tag/move/:kb` |
 | `kb.deleteTag(tagGuid)` | `DELETE /ks/tag/delete/:kb/:tag` |
 
-### Resources
+### Note convenience wrappers
+| Method | What it does |
+|---|---|
+| `kb.moveNote(docGuid, category)` | move a note to a different folder |
+| `kb.renameNote(docGuid, title)` | change title only |
+
+### Comments
+| Method | Endpoint |
+|---|---|
+| `kb.getComments(docGuid)` | `GET /ks/comment/list/:kb/:doc` |
+| `kb.addComment(docGuid, text)` | `POST /ks/comment/create/:kb/:doc` |
+| `kb.deleteComment(docGuid, commentGuid)` | `DELETE /ks/comment/delete/:kb/:doc/:c` |
+
+### History / versions
+| Method | Endpoint |
+|---|---|
+| `kb.getNoteHistory(docGuid)` | `GET /ks/note/history/:kb/:doc` |
+| `kb.getNoteVersion(docGuid, versionId)` | `GET /ks/note/version/:kb/:doc/:v` |
+
+### Sharing
+| Method | Endpoint |
+|---|---|
+| `kb.shareNote(docGuid, { access:'read'\|'edit', expireDays })` | `POST /ks/share/create/:kb/:doc` (expireDays=0 → 永久) |
+| `kb.listShares()` | `GET /ks/share/list/:kb` |
+| `kb.cancelShare(shareId)` | `DELETE /ks/share/delete/:kb/:shareId` |
+
+### Resources (embedded images / arbitrary blobs)
 ```js
 const form = new FormData()
 form.append('file', blob, 'image.png')
-await wiz.kb.uploadImage(docGuid, form)
+await wiz.kb.uploadImage(docGuid, form)  // or uploadResource() — same call
 ```
+
+### Attachments (first-class file attachments)
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `kb.listAttachments(docGuid)` | `GET /ks/note/attachments/:kb/:doc` | list attachments with `attGuid`/`name`/`size` |
+| `kb.uploadAttachment(docGuid, buffer, name)` | `POST /ks/attachment/upload/:kb/:doc` | upload a file |
+| `kb.downloadAttachment(docGuid, attGuid)` | `GET /ks/attachment/download/:kb/:doc/:att` | returns Buffer |
+| `kb.getAttachmentUrl(docGuid, attGuid)` | — | returns raw URL (still needs `X-Wiz-Token` header) |
+
+**Attachment deletion has no dedicated endpoint.** To remove one: fetch the note HTML, strip the `<a href>` / `<img src>` reference, `updateNote(docGuid,{html})` — server garbage-collects orphans.
 
 ## Error handling
 

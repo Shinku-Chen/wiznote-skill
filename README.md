@@ -16,7 +16,9 @@ WizNote(为知笔记)接口的 AI Skill。让 Claude Code、Cursor 等 AI 助手
 git clone https://github.com/Shinku-Chen/wiznote-skill.git ~/.claude/skills/wiznote-api
 ```
 
-Cursor 用户改成 `.cursor/skills/wiznote-api`。Windows 详细路径见 [INSTALL.md](INSTALL.md)。
+Cursor 用户改成 `.cursor/skills/wiznote-api`,Workbuddy 用户改成 `~/.workbuddy/skills/wiznote-api`。Windows 详细路径见 [INSTALL.md](INSTALL.md)。
+
+**私有化服务器**(公司自建 WizNote):`wiz login --endpoint=https://your-host` 或 `export WIZ_ENDPOINT=...`。
 
 ## 登录(只做一次)
 

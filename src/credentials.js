@@ -35,18 +35,24 @@ async function writeConfigFile (obj) {
 /**
  * Resolve credentials, in priority order:
  *   1. explicit args
- *   2. process.env  (WIZ_TOKEN / WIZ_KB_GUID / WIZ_KB_SERVER / WIZ_USER)
+ *   2. process.env  (WIZ_TOKEN / WIZ_KB_GUID / WIZ_KB_SERVER / WIZ_USER / WIZ_ENDPOINT / WIZ_ACCOUNT_URL)
  *   3. OS Keychain (via keytar)
- *   4. ~/.config/wiznote/session.json (non-secret metadata only: kbGuid/kbServer/userId)
+ *   4. ~/.config/wiznote/session.json (non-secret metadata only)
  *
- * Returns { token, kbGuid, kbServer, userId } or throws with a clear hint.
+ * WIZ_ENDPOINT is a shortcut for on-premise deployments where account server and
+ * knowledge base share the same host — if set, it fills in both accountBaseUrl
+ * and kbServer defaults.
+ *
+ * Returns { token, kbGuid, kbServer, userId, accountBaseUrl } or throws.
  */
-export async function resolveCredentials ({ userId, token, kbGuid, kbServer } = {}) {
+export async function resolveCredentials ({ userId, token, kbGuid, kbServer, accountBaseUrl, endpoint } = {}) {
+  const envEndpoint = endpoint || process.env.WIZ_ENDPOINT
   const out = {
     userId: userId || process.env.WIZ_USER,
     token: token || process.env.WIZ_TOKEN,
     kbGuid: kbGuid || process.env.WIZ_KB_GUID,
-    kbServer: kbServer || process.env.WIZ_KB_SERVER
+    kbServer: kbServer || process.env.WIZ_KB_SERVER || envEndpoint,
+    accountBaseUrl: accountBaseUrl || process.env.WIZ_ACCOUNT_URL || envEndpoint
   }
 
   const cfg = await readConfigFile()
@@ -54,6 +60,7 @@ export async function resolveCredentials ({ userId, token, kbGuid, kbServer } = 
     out.userId = out.userId || cfg.userId
     out.kbGuid = out.kbGuid || cfg.kbGuid
     out.kbServer = out.kbServer || cfg.kbServer
+    out.accountBaseUrl = out.accountBaseUrl || cfg.accountBaseUrl
   }
 
   if (!out.token && out.userId) {
@@ -83,7 +90,7 @@ export async function resolveCredentials ({ userId, token, kbGuid, kbServer } = 
  * Token -> OS Keychain (if available) or falls back to config file with 0600.
  * Non-secret metadata (userId/kbGuid/kbServer) -> config file.
  */
-export async function saveSession ({ userId, token, kbGuid, kbServer }) {
+export async function saveSession ({ userId, token, kbGuid, kbServer, accountBaseUrl }) {
   if (!userId || !token) throw new Error('saveSession requires userId and token')
 
   const keytar = await loadKeytar()
@@ -92,12 +99,10 @@ export async function saveSession ({ userId, token, kbGuid, kbServer }) {
     await keytar.setPassword(SERVICE, userId, token)
   } else {
     stored = 'file'
-    // No keychain — write token to the config file too, with 0600.
-    // This is less safe than keychain; we log a hint.
-    await writeConfigFile({ userId, kbGuid, kbServer, token, _warning: 'keytar not installed; token stored in plaintext file. Install keytar to upgrade.' })
+    await writeConfigFile({ userId, kbGuid, kbServer, accountBaseUrl, token, _warning: 'keytar not installed; token stored in plaintext file. Install keytar to upgrade.' })
     return { stored }
   }
-  await writeConfigFile({ userId, kbGuid, kbServer })
+  await writeConfigFile({ userId, kbGuid, kbServer, accountBaseUrl })
   return { stored }
 }
 

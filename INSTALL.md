@@ -17,6 +17,7 @@ Nothing else is strictly required. The optional `keytar` upgrade below unlocks O
 | Claude Code | `~/.claude/skills/wiznote-api` | user-global |
 | Cursor (per project) | `<repo>/.cursor/skills/wiznote-api` | current project only |
 | Cursor (user-global) | `~/.cursor/skills/wiznote-api` | all projects |
+| Workbuddy / OpenClaw | `~/.workbuddy/skills/wiznote-api` | user-global |
 
 Windows equivalents:
 
@@ -24,6 +25,7 @@ Windows equivalents:
 |---|---|
 | Claude Code | `%USERPROFILE%\.claude\skills\wiznote-api` |
 | Cursor (per project) | `<repo>\.cursor\skills\wiznote-api` |
+| Workbuddy | `%USERPROFILE%\.workbuddy\skills\wiznote-api` |
 
 Clone with:
 
@@ -92,9 +94,22 @@ export WIZ_TOKEN=...
 export WIZ_KB_GUID=...
 export WIZ_KB_SERVER=https://kshttps0.wiz.cn
 export WIZ_USER=you@example.com
+
+# Optional: on-premise deployment (AS+KS on same host)
+export WIZ_ENDPOINT=https://wiznote.mycompany.internal
 ```
 
 Get the values by running `wiz login` once on your workstation, then `wiz whoami` (metadata) plus reading the token out of the keychain if you enabled it.
+
+### On-premise / 私有化服务器
+
+If your company hosts its own WizNote:
+
+```bash
+node scripts/wiz.js login --endpoint=https://wiznote.mycompany.internal
+```
+
+The endpoint value is persisted alongside the other session metadata, so subsequent calls don't need to repeat it.
 
 ## First-time login
 
