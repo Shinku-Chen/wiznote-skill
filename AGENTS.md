@@ -54,7 +54,8 @@ node scripts/wiz.js --help   # 冒烟:CLI 能起来
 
 - commit 标题:`type(scope): 简述`,`type` ∈ `feat/fix/docs/refactor/perf/test/chore/build/ci`,scope 用模块名(`auth` / `res` / `ci` / `readme` 等)。简述用祈使句、≤50 字符、结尾不加句号、默认中文,技术术语保留英文。
 - 一个 commit 只做一件事,message 描述最终 diff,不叙述调试过程。
-- commit 后在同一轮内 `git push`(个人仓库,直接推 `main`)。
+- **改动落地并验证(`npm test` 绿、无临时文件残留)后,主动在同一轮内 `git commit` 并 `git push`,不用每次征求同意**;push 是必须的,别停在 commit。个人仓库直接推 `main`(历史全是直推 main、`origin/main` 同步)。
+- 例外仍需确认的只有开 PR/MR 这类公开动作;push 到 `main` 不需要额外点头。
 
 ## 其他约定
 
