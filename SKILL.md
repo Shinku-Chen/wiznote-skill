@@ -141,7 +141,8 @@ await wiz.switchKb(teamKbGuid, { kbServer: 'https://groupks01.wiz.cn' })
 | `kb.getCategoryNotes({ category, start, count, withAbstract, orderBy, ascending })` | `GET /ks/note/list/category/:kb` | list under folder |
 | `kb.createNote({ title, category, owner, html, type })` | `POST /ks/note/create/:kb` | `type='document'` \| `'lite/markdown'` |
 | `kb.updateNote(docGuid, { html, title, type })` | `PUT /ks/note/save/:kb/:doc` | content |
-| `kb.updateNoteInfo(docGuid, { title, tags, category })` | `POST /ks/note/upload/:kb/:doc` | metadata (⚠️ `category` = move) |
+| `kb.updateNoteInfo(docGuid, data)` | `POST /ks/note/upload/:kb/:doc` | ⚠️ **full overwrite**, not a patch — omitted fields (`type`/`attachmentCount`/`protected`) get nulled & new clients then reject the note; also needs `kbGuid`+`docGuid` in body. Prefer `patchNoteInfo` |
+| `kb.patchNoteInfo(docGuid, { title? / category? / … })` | (fetch info → merge → upload) | safe partial update: preserves all other metadata (`category` change = move) |
 | `kb.deleteNote(docGuid)` | `DELETE /ks/note/delete/:kb/:doc` | |
 | `kb.copyNote(docGuid, { targetKbGuid, targetCategory })` | `POST /ks/note/copy/:kb/:doc` | |
 | `kb.searchNote({ ss })` | `GET /ks/note/search/:kb` | full-text |
@@ -159,7 +160,7 @@ await wiz.switchKb(teamKbGuid, { kbServer: 'https://groupks01.wiz.cn' })
 | Method | Endpoint |
 |---|---|
 | `kb.getAllTags()` | `GET /ks/tag/all/:kb` |
-| `kb.getTagNotes({ tag, start, count, withAbstract, orderBy, ascending })` | `GET /ks/note/list/tag/:kb` |
+| `kb.getTagNotes({ tag, orderBy, start, count, withAbstract, ascending })` | `GET /ks/note/list/tag/:kb` — ⚠️ `orderBy` **required** by server (e.g. `'created'`), else `No options.orderBy` (code 2000) |
 | `kb.createTag({ name, parentTagGuid })` | `POST /ks/tag/create/:kb` |
 | `kb.renameTag({ tagGuid, name })` | `PUT /ks/tag/rename/:kb` |
 | `kb.moveTag({ tagGuid, parentTagGuid })` | `PUT /ks/tag/move/:kb` |
@@ -307,15 +308,22 @@ const r = await wiz.createMarkdownNote({
   title: '周报 W17',
   markdown: '# 本周完成\n- 特性 A\n',
   category: '/工作/',
-  tags: ''
+  tags: '',
+  created: Date.parse('2026-04-27')   // optional — defaults to Date.now()
 })
 await wiz.updateMarkdownNote({ docGuid: r.docGuid, markdown: '# 新版本', title: '新标题' })
 const md = await wiz.readMarkdownNote(r.docGuid)   // raw markdown back
 ```
 
-Low-level: `wrapMarkdown(md)` returns the string body suitable for `kb.createNote({html, type:'lite/markdown'})`; `unwrapMarkdown(html)` pulls the source back out of `getNoteContent().html`.
+**创建笔记必带 `created`**:两个创建 helper(`createMarkdownNote` /
+`createCollaborationNote`)都会自动把 `created`(毫秒时间戳)写进 create body,
+默认取 `Date.now()`。不传会让笔记落地时缺创建时间(WizNote 客户端显示为空 /
+异常)。要回填历史日期就显式传 `created`。走底层 `kb.createNote()` 时请自己带上
+`created` 字段,别漏。
 
-CLI: `wiz md new "<title>" -f md.md [--category=/x/]`, `wiz md read <docGuid>`, `wiz md update <docGuid> -f md.md [--title="…"]`.
+Low-level: `wrapMarkdown(md)` returns the string body suitable for `kb.createNote({html, type:'lite/markdown', created})`; `unwrapMarkdown(html)` pulls the source back out of `getNoteContent().html`.
+
+CLI: `wiz md new "<title>" -f md.md [--category=/x/] [--created=<ms|date>]`, `wiz md read <docGuid>`, `wiz md update <docGuid> -f md.md [--title="…"]`.
 
 ### Embedding images / media in a `lite/markdown` note
 
@@ -385,7 +393,8 @@ await wiz.createCollaborationNote({
   title: '2026 W17 周报',
   markdown: '# 完成\n- 特性 A\n\n## 计划\n- [ ] 测试 B',
   category: '/工作/周报/',
-  tags: '周报'
+  tags: '周报',
+  created: Date.parse('2026-04-27')   // optional — defaults to Date.now()
 })
 
 // Read as Markdown (auto-detects note type, falls back to HTML for legacy)
@@ -479,7 +488,7 @@ until you POST step 1 to bind it to this doc.
 CLI: `wiz collab embed …` prints `(deduped, no upload)` vs `(new upload)`
 per file and a summary `N embedded (K deduped, N-K bytes uploaded)`.
 
-CLI: `wiz collab new "<title>" -f md.md [--category=/x/] [--tags=a,b]`, `wiz collab read <docGuid>`, `wiz collab update <docGuid> -f md.md`.
+CLI: `wiz collab new "<title>" -f md.md [--category=/x/] [--tags=a,b] [--created=<ms|date>]`, `wiz collab read <docGuid>`, `wiz collab update <docGuid> -f md.md`.
 
 ## Error handling
 

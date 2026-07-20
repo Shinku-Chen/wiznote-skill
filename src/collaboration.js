@@ -473,8 +473,10 @@ export async function collabUploadAndEmbed (wiz, docGuid, items, opts = {}) {
 }
 
 export async function createCollaborationNote (wiz, {
-  title, markdown = '', category = '/My Notes/', tags = ''
+  title, markdown = '', category = '/My Notes/', tags = '', created = Date.now()
 }) {
+  // `created` 总是显式带上(默认当前时间):不传会让笔记落地时缺创建时间;
+  // 传毫秒时间戳可回填历史日期。
   const createRes = await execRequest('POST',
     `${wiz.kbServer}/ks/note/create/${wiz.kbGuid}`,
     {
@@ -482,7 +484,7 @@ export async function createCollaborationNote (wiz, {
       query: { clientType: 'web', clientVersion: '4.0', lang: 'zh-cn' },
       body: {
         kbGuid: wiz.kbGuid, html: '', category,
-        owner: wiz.userId, tags, title, type: 'collaboration'
+        owner: wiz.userId, tags, title, created, type: 'collaboration'
       },
       returnFullResult: true
     })

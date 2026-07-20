@@ -49,11 +49,15 @@ export function unwrapMarkdown (html) {
 
 /**
  * Create a new `lite/markdown` note from a markdown string.
+ *
+ * `created` is always sent (defaults to now): notes created without it end up
+ * with a missing/zero creation time in the WizNote client. Pass a millisecond
+ * epoch to backdate.
  * @param {WizClient} wiz
- * @param {{title:string, markdown?:string, category?:string, tags?:string}} opts
+ * @param {{title:string, markdown?:string, category?:string, tags?:string, created?:number}} opts
  * @returns {Promise<object>} the createNote response
  */
-export async function createMarkdownNote (wiz, { title, markdown = '', category = '/My Notes/', tags = '' }) {
+export async function createMarkdownNote (wiz, { title, markdown = '', category = '/My Notes/', tags = '', created = Date.now() }) {
   if (!title) throw new Error('createMarkdownNote: title required')
   return wiz.kb.createNote({
     kbGuid: wiz.kbGuid,
@@ -61,6 +65,7 @@ export async function createMarkdownNote (wiz, { title, markdown = '', category 
     category,
     title,
     tags,
+    created,
     type: 'lite/markdown',
     html: wrapMarkdown(markdown)
   })
@@ -74,7 +79,7 @@ export async function createMarkdownNote (wiz, { title, markdown = '', category 
 export async function updateMarkdownNote (wiz, { docGuid, markdown = '', title }) {
   if (!docGuid) throw new Error('updateMarkdownNote: docGuid required')
   if (title) {
-    await wiz.kb.updateNoteInfo(docGuid, { title })
+    await wiz.kb.patchNoteInfo(docGuid, { title })
   }
   return wiz.kb.updateNote(docGuid, {
     kbGuid: wiz.kbGuid,

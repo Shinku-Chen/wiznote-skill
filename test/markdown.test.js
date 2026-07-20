@@ -15,7 +15,11 @@ function makeStub ({ readback } = {}) {
       createNote (data) { calls.create.push(data); return { ...data, docGuid: 'new-doc', dataSize: 100 } },
       updateNote (docGuid, payload) { calls.update.push({ docGuid, payload }) },
       updateNoteInfo (docGuid, payload) { calls.updateInfo.push({ docGuid, payload }) },
-      getNoteContent (docGuid) { calls.getContent.push(docGuid); return readback }
+      getNoteContent (docGuid) { calls.getContent.push(docGuid); return readback },
+      patchNoteInfo (docGuid, patch = {}) {
+        const info = (readback || {}).info || {}
+        this.updateNoteInfo(docGuid, { docGuid, ...info, ...patch })
+      }
     }
   }
 }
@@ -62,6 +66,13 @@ test('createMarkdownNote passes lite/markdown + wrapped html to createNote', asy
   assert.equal(body.title, 't')
   assert.match(body.html, /^<!doctype html>/)
   assert.match(body.html, /<pre># body<\/pre>/)
+  assert.equal(typeof body.created, 'number')   // always stamped, defaults to now
+})
+
+test('createMarkdownNote honors an explicit created timestamp', async () => {
+  const c = makeStub()
+  await createMarkdownNote(c, { title: 't', created: 1682899200000 })
+  assert.equal(c.calls.create[0].created, 1682899200000)
 })
 
 test('createMarkdownNote requires a title', async () => {

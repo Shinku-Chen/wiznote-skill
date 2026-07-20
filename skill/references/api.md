@@ -47,12 +47,12 @@ Token is refreshed with `GET /as/user/keep`; invalidated with `GET /as/user/logo
 | HTTP | Path | Purpose |
 |---|---|---|
 | GET    | `/ks/note/list/category/:kbGuid` | list under a folder |
-| GET    | `/ks/note/list/tag/:kbGuid` | list under a tag |
+| GET    | `/ks/note/list/tag/:kbGuid` | list under a tag — ⚠️ `orderBy` query param required (e.g. `created`), else `No options.orderBy` (code 2000) |
 | GET    | `/ks/note/info/:kbGuid/:docGuid` | metadata |
 | GET    | `/ks/note/download/:kbGuid/:docGuid` | full content |
 | POST   | `/ks/note/create/:kbGuid` | create |
 | PUT    | `/ks/note/save/:kbGuid/:docGuid` | update content |
-| POST   | `/ks/note/upload/:kbGuid/:docGuid` | update metadata (title/tags/category) |
+| POST   | `/ks/note/upload/:kbGuid/:docGuid` | update metadata — ⚠️ **full overwrite**: body must carry `kbGuid`+`docGuid` and every field to keep (`type`/`attachmentCount`/`protected`/…); omitted fields are nulled and new clients reject notes with null `attachmentCount`. To patch, GET the note first, merge, re-upload. |
 | DELETE | `/ks/note/delete/:kbGuid/:docGuid` | delete |
 | POST   | `/ks/note/copy/:kbGuid/:docGuid` | copy across kb/category |
 | GET    | `/ks/note/search/:kbGuid?ss=...` | full-text search |

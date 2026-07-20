@@ -99,10 +99,49 @@ export class KnowledgeBaseApi {
       { body: data, token: this._t() })
   }
 
+  /**
+   * Raw metadata upload. ⚠️ `/ks/note/upload` is a FULL-OBJECT OVERWRITE, not a
+   * partial patch: any writable field you omit is reset (e.g. `type`,
+   * `attachmentCount`, `protected` → null). New clients reject notes whose
+   * `attachmentCount` is null instead of a number. Also requires `kbGuid` +
+   * `docGuid` in the body (else the server answers `kbGuid is not match`).
+   *
+   * Pass a COMPLETE metadata object here, or use {@link patchNoteInfo} to change
+   * a few fields while preserving the rest.
+   */
   updateNoteInfo (docGuid, data) {
     return execRequest('POST', this._kb(`/ks/note/upload/${this.kbGuid}/${docGuid}`), {
       body: data, token: this._t()
     })
+  }
+
+  /**
+   * Safely change a few metadata fields on a note. Fetches the current info,
+   * merges `patch` over it, and re-uploads the complete object — so unrelated
+   * fields (`type`, `attachmentCount`, `protected`, `owner`, …) survive.
+   * @param {string} docGuid
+   * @param {object} patch  fields to override, e.g. `{ category }` or `{ title }`
+   */
+  async patchNoteInfo (docGuid, patch = {}) {
+    const detail = await this.getNoteContent(docGuid, { downloadInfo: 1, downloadData: 0 })
+    const info = detail?.info || {}
+    const body = {
+      kbGuid: this.kbGuid,
+      docGuid,
+      title: info.title,
+      category: info.category,
+      owner: info.owner,
+      protected: info.protected ?? 0,
+      readCount: info.readCount ?? 0,
+      attachmentCount: info.attachmentCount ?? 0,
+      type: info.type || 'lite/markdown',
+      fileType: info.fileType ?? '',
+      created: info.created,
+      keywords: info.keywords ?? '',
+      url: info.url ?? '',
+      ...patch
+    }
+    return this.updateNoteInfo(docGuid, body)
   }
 
   deleteNote (docGuid) {
@@ -161,14 +200,14 @@ export class KnowledgeBaseApi {
 
   // ── Note convenience wrappers ──────────────────────────────────────────
 
-  /** Move a note to a new category. */
+  /** Move a note to a new category (preserves all other metadata). */
   moveNote (docGuid, category) {
-    return this.updateNoteInfo(docGuid, { category })
+    return this.patchNoteInfo(docGuid, { category })
   }
 
-  /** Rename a note's title without changing its category/tags. */
+  /** Rename a note's title without changing its category/tags/other metadata. */
   renameNote (docGuid, title) {
-    return this.updateNoteInfo(docGuid, { title })
+    return this.patchNoteInfo(docGuid, { title })
   }
 
   // ── Resources (images embedded in note HTML) ───────────────────────────
