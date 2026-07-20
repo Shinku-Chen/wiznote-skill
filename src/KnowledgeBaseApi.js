@@ -118,7 +118,10 @@ export class KnowledgeBaseApi {
   /**
    * Safely change a few metadata fields on a note. Fetches the current info,
    * merges `patch` over it, and re-uploads the complete object — so unrelated
-   * fields (`type`, `attachmentCount`, `protected`, `owner`, …) survive.
+   * fields (`type`, `attachmentCount`, `protected`, `owner`, `tags`, …) survive.
+   *
+   * ⚠️ `tags` MUST be echoed back: `/ks/note/upload` is a full overwrite, so a
+   * body without `tags` wipes the note's tag associations (verified 2026-07-20).
    * @param {string} docGuid
    * @param {object} patch  fields to override, e.g. `{ category }` or `{ title }`
    */
@@ -137,6 +140,7 @@ export class KnowledgeBaseApi {
       type: info.type || 'lite/markdown',
       fileType: info.fileType ?? '',
       created: info.created,
+      tags: info.tags ?? '',
       keywords: info.keywords ?? '',
       url: info.url ?? '',
       ...patch
