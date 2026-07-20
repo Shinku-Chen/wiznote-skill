@@ -309,21 +309,32 @@ const r = await wiz.createMarkdownNote({
   markdown: '# 本周完成\n- 特性 A\n',
   category: '/工作/',
   tags: '',
-  created: Date.parse('2026-04-27')   // optional — defaults to Date.now()
+  created: Date.parse('2026-04-27')   // optional — backdate creation time
 })
 await wiz.updateMarkdownNote({ docGuid: r.docGuid, markdown: '# 新版本', title: '新标题' })
 const md = await wiz.readMarkdownNote(r.docGuid)   // raw markdown back
 ```
 
-**创建笔记必带 `created`**:两个创建 helper(`createMarkdownNote` /
-`createCollaborationNote`)都会自动把 `created`(毫秒时间戳)写进 create body,
-默认取 `Date.now()`。不传会让笔记落地时缺创建时间(WizNote 客户端显示为空 /
-异常)。要回填历史日期就显式传 `created`。走底层 `kb.createNote()` 时请自己带上
-`created` 字段,别漏。
+#### 回填时间戳(`created` / `dataModified`)——实测规律(2026-07-20 @ `vipkshttps14.wiz.cn`)
 
-Low-level: `wrapMarkdown(md)` returns the string body suitable for `kb.createNote({html, type:'lite/markdown', created})`; `unwrapMarkdown(html)` pulls the source back out of `getNoteContent().html`.
+| 途径 | `created` | `dataModified`(修改时间) |
+|---|---|---|
+| `POST /ks/note/create`(建笔记时传) | ❌ 忽略,盖成 now | ❌ 盖成 now |
+| `patchNoteInfo({created, dataModified})`(建完再改) | ✅ 生效 | ✅ 生效 |
+| 之后任何内容保存(`updateNote` / collab 写块) | 保留不变 | **被冲回 now** |
 
-CLI: `wiz md new "<title>" -f md.md [--category=/x/] [--created=<ms|date>]`, `wiz md read <docGuid>`, `wiz md update <docGuid> -f md.md [--title="…"]`.
+要点:
+- **创建端点不认 `created`**。`createMarkdownNote` / `createCollaborationNote`
+  传的 `created` / `dataModified` 是**建完后由 helper 自动补一次 `patchNoteInfo`** 落地的,
+  不是走 create body(走了也没用)。
+- **`dataModified` 必须是最后一次写**:任何后续内容保存都会把它顶回当前时间。
+  helper 已经把这个 patch 放在 collab 写块**之后**,单独调时也要留意顺序。
+- 对**已存在**的笔记改时间:直接
+  `await wiz.kb.patchNoteInfo(docGuid, { created, dataModified })`(毫秒时间戳)。
+
+Low-level: `wrapMarkdown(md)` returns the string body suitable for `kb.createNote({html, type:'lite/markdown'})`; `unwrapMarkdown(html)` pulls the source back out of `getNoteContent().html`.
+
+CLI: `wiz md new "<title>" -f md.md [--category=/x/] [--created=<ms|date>] [--modified=<ms|date>]`, `wiz md read <docGuid>`, `wiz md update <docGuid> -f md.md [--title="…"]`.
 
 ### Embedding images / media in a `lite/markdown` note
 
@@ -394,7 +405,7 @@ await wiz.createCollaborationNote({
   markdown: '# 完成\n- 特性 A\n\n## 计划\n- [ ] 测试 B',
   category: '/工作/周报/',
   tags: '周报',
-  created: Date.parse('2026-04-27')   // optional — defaults to Date.now()
+  created: Date.parse('2026-04-27')   // optional — backdate (applied post-create; see 回填时间戳 above)
 })
 
 // Read as Markdown (auto-detects note type, falls back to HTML for legacy)
@@ -488,7 +499,7 @@ until you POST step 1 to bind it to this doc.
 CLI: `wiz collab embed …` prints `(deduped, no upload)` vs `(new upload)`
 per file and a summary `N embedded (K deduped, N-K bytes uploaded)`.
 
-CLI: `wiz collab new "<title>" -f md.md [--category=/x/] [--tags=a,b] [--created=<ms|date>]`, `wiz collab read <docGuid>`, `wiz collab update <docGuid> -f md.md`.
+CLI: `wiz collab new "<title>" -f md.md [--category=/x/] [--tags=a,b] [--created=<ms|date>] [--modified=<ms|date>]`, `wiz collab read <docGuid>`, `wiz collab update <docGuid> -f md.md`.
 
 ## Error handling
 

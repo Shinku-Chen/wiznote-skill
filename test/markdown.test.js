@@ -66,13 +66,25 @@ test('createMarkdownNote passes lite/markdown + wrapped html to createNote', asy
   assert.equal(body.title, 't')
   assert.match(body.html, /^<!doctype html>/)
   assert.match(body.html, /<pre># body<\/pre>/)
-  assert.equal(typeof body.created, 'number')   // always stamped, defaults to now
 })
 
-test('createMarkdownNote honors an explicit created timestamp', async () => {
+test('createMarkdownNote does not patch metadata when no created/dataModified given', async () => {
   const c = makeStub()
-  await createMarkdownNote(c, { title: 't', created: 1682899200000 })
-  assert.equal(c.calls.create[0].created, 1682899200000)
+  await createMarkdownNote(c, { title: 't', markdown: 'x' })
+  assert.equal(c.calls.updateInfo.length, 0)   // create-only; no follow-up patch
+})
+
+test('createMarkdownNote backdates created/dataModified via a post-create patch', async () => {
+  // /ks/note/create ignores created inline, so the helper patches after creating.
+  const c = makeStub({ readback: { info: { title: 't', type: 'lite/markdown' } } })
+  await createMarkdownNote(c, { title: 't', created: 1682899200000, dataModified: 1577836800000 })
+  assert.equal(c.calls.create.length, 1)
+  assert.equal(c.calls.create[0].created, undefined)   // not sent inline
+  assert.equal(c.calls.updateInfo.length, 1)
+  const patched = c.calls.updateInfo[0].payload
+  assert.equal(patched.docGuid, 'new-doc')
+  assert.equal(patched.created, 1682899200000)
+  assert.equal(patched.dataModified, 1577836800000)
 })
 
 test('createMarkdownNote requires a title', async () => {

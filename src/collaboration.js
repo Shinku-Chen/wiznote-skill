@@ -473,10 +473,8 @@ export async function collabUploadAndEmbed (wiz, docGuid, items, opts = {}) {
 }
 
 export async function createCollaborationNote (wiz, {
-  title, markdown = '', category = '/My Notes/', tags = '', created = Date.now()
+  title, markdown = '', category = '/My Notes/', tags = '', created, dataModified
 }) {
-  // `created` 总是显式带上(默认当前时间):不传会让笔记落地时缺创建时间;
-  // 传毫秒时间戳可回填历史日期。
   const createRes = await execRequest('POST',
     `${wiz.kbServer}/ks/note/create/${wiz.kbGuid}`,
     {
@@ -484,7 +482,7 @@ export async function createCollaborationNote (wiz, {
       query: { clientType: 'web', clientVersion: '4.0', lang: 'zh-cn' },
       body: {
         kbGuid: wiz.kbGuid, html: '', category,
-        owner: wiz.userId, tags, title, created, type: 'collaboration'
+        owner: wiz.userId, tags, title, type: 'collaboration'
       },
       returnFullResult: true
     })
@@ -506,6 +504,13 @@ export async function createCollaborationNote (wiz, {
       blocks, extras, version: 0
     })
   }
+  // /ks/note/create ignores created/dataModified (server stamps now), so backdate
+  // via patchNoteInfo. Must run AFTER the block write above — that content write
+  // would otherwise reset dataModified back to now.
+  const patch = {}
+  if (created != null) patch.created = created
+  if (dataModified != null) patch.dataModified = dataModified
+  if (Object.keys(patch).length) await wiz.kb.patchNoteInfo(docGuid, patch)
   return { docGuid, title, category }
 }
 

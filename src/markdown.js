@@ -50,25 +50,31 @@ export function unwrapMarkdown (html) {
 /**
  * Create a new `lite/markdown` note from a markdown string.
  *
- * `created` is always sent (defaults to now): notes created without it end up
- * with a missing/zero creation time in the WizNote client. Pass a millisecond
- * epoch to backdate.
+ * To backdate, pass `created` / `dataModified` (ms epoch). `/ks/note/create`
+ * ignores these in its body (the server stamps "now"), so we apply them with a
+ * follow-up `patchNoteInfo` — verified 2026-07-20 against `vipkshttps14.wiz.cn`.
+ * Note `dataModified` must be the last write to a note: any later content save
+ * resets it to now. `created` survives later edits.
  * @param {WizClient} wiz
- * @param {{title:string, markdown?:string, category?:string, tags?:string, created?:number}} opts
+ * @param {{title:string, markdown?:string, category?:string, tags?:string, created?:number, dataModified?:number}} opts
  * @returns {Promise<object>} the createNote response
  */
-export async function createMarkdownNote (wiz, { title, markdown = '', category = '/My Notes/', tags = '', created = Date.now() }) {
+export async function createMarkdownNote (wiz, { title, markdown = '', category = '/My Notes/', tags = '', created, dataModified }) {
   if (!title) throw new Error('createMarkdownNote: title required')
-  return wiz.kb.createNote({
+  const res = await wiz.kb.createNote({
     kbGuid: wiz.kbGuid,
     owner: wiz.userId,
     category,
     title,
     tags,
-    created,
     type: 'lite/markdown',
     html: wrapMarkdown(markdown)
   })
+  const patch = {}
+  if (created != null) patch.created = created
+  if (dataModified != null) patch.dataModified = dataModified
+  if (Object.keys(patch).length) await wiz.kb.patchNoteInfo(res.docGuid, patch)
+  return res
 }
 
 /**

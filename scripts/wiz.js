@@ -48,16 +48,17 @@ function usage () {
                                           by extension. --prepend to insert at top.
                                           --heading="…" wraps the block in <h3>.
 
-  md new "<title>" [-f md.md] [--category=/x/] [--created=<ms|date>]
+  md new "<title>" [-f md.md] [--category=/x/] [--created=<ms|date>] [--modified=<ms|date>]
                                           Create a lite/markdown note (single-user; HTML shell).
-                                          created defaults to now; pass ms epoch or date to backdate.
+                                          --created/--modified backdate the note (applied via a
+                                          post-create metadata patch; create ignores them inline).
   md read <docGuid>                       Read markdown note as raw markdown
   md update <docGuid> -f md.md [--title="new"]
                                           Overwrite markdown note with Markdown file
 
-  collab new "<title>" [-f md.md] [--category=/x/] [--tags=a,b] [--created=<ms|date>]
+  collab new "<title>" [-f md.md] [--category=/x/] [--tags=a,b] [--created=<ms|date>] [--modified=<ms|date>]
                                           Create a collaboration note from Markdown
-                                          (created defaults to now; pass ms epoch or date to backdate)
+                                          (--created/--modified backdate via post-create patch)
   collab read <docGuid>                   Read collab note as Markdown
   collab update <docGuid> -f md.md [--title="new"]
                                           Overwrite collab note with Markdown file
@@ -81,14 +82,26 @@ function ask (question, { silent = false } = {}) {
   })
 }
 
-// Turn a `--created` flag into `{ created: <ms> }` (or `{}` to keep the default).
+// Parse a timestamp flag into ms, or exit on an unparseable value.
 // Accepts a millisecond epoch (`1700000000000`) or any Date-parseable string
-// (`2023-05-01`, `2023/05/01 08:00`). Exits on an unparseable value.
-function parseCreated (raw) {
-  if (raw === undefined || raw === true || raw === '') return {}
+// (`2023-05-01`, `2023/05/01 08:00`).
+function parseStamp (raw, flag) {
   const ms = /^\d+$/.test(String(raw)) ? Number(raw) : Date.parse(raw)
-  if (!Number.isFinite(ms)) { console.error(`invalid --created: ${raw}`); process.exit(1) }
-  return { created: ms }
+  if (!Number.isFinite(ms)) { console.error(`invalid ${flag}: ${raw}`); process.exit(1) }
+  return ms
+}
+
+// Build the `{ created?, dataModified? }` overrides from --created / --modified
+// flags. Absent/empty flags contribute nothing (server keeps its default: now).
+function parseTimeFlags (flags) {
+  const out = {}
+  if (flags.created !== undefined && flags.created !== true && flags.created !== '') {
+    out.created = parseStamp(flags.created, '--created')
+  }
+  if (flags.modified !== undefined && flags.modified !== true && flags.modified !== '') {
+    out.dataModified = parseStamp(flags.modified, '--modified')
+  }
+  return out
 }
 
 async function main () {
@@ -258,12 +271,12 @@ async function main () {
         switch (sub) {
           case 'new': {
             const title = positional[0]
-            if (!title) { console.error('usage: wiz md new "<title>" [-f md.md] [--category=/x/] [--created=<ms|date>]'); process.exit(1) }
+            if (!title) { console.error('usage: wiz md new "<title>" [-f md.md] [--category=/x/] [--created=<ms|date>] [--modified=<ms|date>]'); process.exit(1) }
             const markdown = await readFileFlag()
             const r = await wiz.createMarkdownNote({
               title, markdown,
               category: flags.category || '/My Notes/',
-              ...parseCreated(flags.created)
+              ...parseTimeFlags(flags)
             })
             console.log(JSON.stringify({ docGuid: r.docGuid, title: r.title, type: r.type, category: r.category }, null, 2))
             break
@@ -310,13 +323,13 @@ async function main () {
         switch (sub) {
           case 'new': {
             const title = positional[0]
-            if (!title) { console.error('usage: wiz collab new "<title>" [-f md.md] [--category=/x/] [--tags=a,b] [--created=<ms|date>]'); process.exit(1) }
+            if (!title) { console.error('usage: wiz collab new "<title>" [-f md.md] [--category=/x/] [--tags=a,b] [--created=<ms|date>] [--modified=<ms|date>]'); process.exit(1) }
             const markdown = await readFileFlag()
             const r = await wiz.createCollaborationNote({
               title, markdown,
               category: flags.category || '/My Notes/',
               tags: flags.tags || '',
-              ...parseCreated(flags.created)
+              ...parseTimeFlags(flags)
             })
             console.log(JSON.stringify(r, null, 2))
             break
