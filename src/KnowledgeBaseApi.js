@@ -120,8 +120,10 @@ export class KnowledgeBaseApi {
    * merges `patch` over it, and re-uploads the complete object — so unrelated
    * fields (`type`, `attachmentCount`, `protected`, `owner`, `tags`, …) survive.
    *
-   * ⚠️ `tags` MUST be echoed back: `/ks/note/upload` is a full overwrite, so a
-   * body without `tags` wipes the note's tag associations (verified 2026-07-20).
+   * ⚠️ `tags` and `dataModified` MUST be echoed back: `/ks/note/upload` is a full
+   * overwrite, so a body omitting them wipes the note's tags and resets its
+   * modification time to 1970 (epoch 0). Verified 2026-07-20 — moveNote/renameNote
+   * and any metadata patch used to silently clobber both.
    * @param {string} docGuid
    * @param {object} patch  fields to override, e.g. `{ category }` or `{ title }`
    */
@@ -140,6 +142,7 @@ export class KnowledgeBaseApi {
       type: info.type || 'lite/markdown',
       fileType: info.fileType ?? '',
       created: info.created,
+      dataModified: info.dataModified ?? info.created,
       tags: info.tags ?? '',
       keywords: info.keywords ?? '',
       url: info.url ?? '',
