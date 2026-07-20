@@ -78,6 +78,10 @@ export async function resolveCredentials ({ userId, token, kbGuid, kbServer, acc
     }
   }
 
+  // File fallback: when keytar is unavailable, saveSession stores the token in
+  // the config file. Read it back here as the last resort (after env + keychain).
+  if (!out.token && cfg && cfg.token) out.token = cfg.token
+
   if (!out.token) {
     throw new Error(
       'WizNote token not found. Options:\n' +
