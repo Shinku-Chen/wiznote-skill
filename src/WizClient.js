@@ -62,8 +62,16 @@ export class WizClient {
           // callers get a Promise where a plain string is expected.
           if (!result || typeof result.then !== 'function') return result
           return result.catch(async err => {
-            if (isAuthError(err) && await this._tryReauth()) {
-              return orig.apply(target, args)
+            if (!isAuthError(err)) throw err
+            const reauth = await this._tryReauth()
+            if (reauth.ok) return orig.apply(target, args)
+            // Auto-reauth didn't recover the session. Don't rethrow the bare
+            // "Invalid token" — surface WHY reauth failed (expired cert, network,
+            // no stored password) so the caller isn't left guessing.
+            if (reauth.reason) {
+              const e = new Error(`WizNote token expired and auto-reauth failed: ${reauth.reason}`)
+              e.cause = err
+              throw e
             }
             throw err
           })
@@ -74,14 +82,18 @@ export class WizClient {
 
   /**
    * Attempt to refresh credentials using a stored password (opt-in).
-   * Returns true if reauth succeeded and this client's token was updated.
+   * Returns `{ ok, reason }`:
+   *   - `{ ok: true }`                — reauth succeeded, this.token updated
+   *   - `{ ok: false, reason: '…' }`  — attempted (or couldn't) and here's why
+   * The `reason` is meant to be shown to the caller; when set, the proxy raises
+   * it instead of the bare "Invalid token".
    */
   async _tryReauth () {
     if (this._reauthInFlight) return await this._reauthInFlight
     this._reauthInFlight = (async () => {
-      if (!this.userId) return false
+      if (!this.userId) return { ok: false, reason: 'no userId in session (run `wiz login`)' }
       const password = await getStoredPassword(this.userId)
-      if (!password) return false
+      if (!password) return { ok: false, reason: 'auto-reauth not enabled — no stored password (run `wiz save-password`)' }
       try {
         const result = await this.account.login({ userId: this.userId, password })
         this.token = result.token
@@ -99,9 +111,12 @@ export class WizClient {
           kbServer: this.kbServer,
           accountBaseUrl: this.accountBaseUrl
         }).catch(() => {})
-        return true
-      } catch {
-        return false
+        return { ok: true }
+      } catch (e) {
+        // Network/TLS failures land here as bare `fetch failed`; the useful bit
+        // is the cause code (e.g. CERT_HAS_EXPIRED). Include it.
+        const detail = e?.cause?.code ? `${e.message} (${e.cause.code})` : e?.message || String(e)
+        return { ok: false, reason: `re-login to ${this.accountBaseUrl || 'https://as.wiz.cn'} failed: ${detail}` }
       }
     })()
     try { return await this._reauthInFlight }
