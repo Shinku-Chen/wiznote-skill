@@ -61,6 +61,7 @@ function usage () {
                      auto-expires). Use only while a WizNote server cert is
                      lapsed; run 'insecure-tls off' once it's renewed.
   whoami             Show current session
+  keep               Refresh the token's TTL (GET /as/user/keep)
   ls [category] [--start=N] [--count=N] [--all]
                      List notes in a category. Default: root, count=50.
                      --start=N   offset for pagination (default 0)
@@ -251,6 +252,12 @@ async function main () {
       case 'whoami': {
         const c = await resolveCredentials()
         console.log(JSON.stringify({ userId: c.userId, kbGuid: c.kbGuid, kbServer: c.kbServer }, null, 2))
+        break
+      }
+      case 'keep': {
+        const wiz = await WizClient.fromStored()
+        const r = await wiz.keepAlive()
+        console.log(JSON.stringify(r, null, 2))
         break
       }
       case 'ls': {
