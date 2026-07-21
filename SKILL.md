@@ -332,6 +332,10 @@ const md = await wiz.readMarkdownNote(r.docGuid)   // raw markdown back
 - 对**已存在**的笔记改时间:直接
   `await wiz.kb.patchNoteInfo(docGuid, { created, dataModified })`(毫秒时间戳)。
 
+**`.md` 后缀**:markdown 笔记的标题统一带 `.md`。`createMarkdownNote` /
+`updateMarkdownNote`(改标题时)会自动补 `.md`(已带则不重复;`ensureMdSuffix(title)`
+是可复用的纯函数)。这是 markdown 笔记的命名约定,便于和其它类型区分。
+
 Low-level: `wrapMarkdown(md)` returns the string body suitable for `kb.createNote({html, type:'lite/markdown'})`; `unwrapMarkdown(html)` pulls the source back out of `getNoteContent().html`.
 
 CLI: `wiz md new "<title>" -f md.md [--category=/x/] [--created=<ms|date>] [--modified=<ms|date>]`, `wiz md read <docGuid>`, `wiz md update <docGuid> -f md.md [--title="…"]`.

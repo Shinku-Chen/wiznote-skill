@@ -48,7 +48,18 @@ export function unwrapMarkdown (html) {
 }
 
 /**
+ * Ensure a `lite/markdown` note title carries a `.md` suffix (case-insensitive,
+ * so `notes.MD` is left alone). Convention: markdown notes are named `*.md`.
+ */
+export function ensureMdSuffix (title) {
+  return /\.md$/i.test(title) ? title : `${title}.md`
+}
+
+/**
  * Create a new `lite/markdown` note from a markdown string.
+ *
+ * The title always gets a `.md` suffix (markdown-note naming convention);
+ * pass a title already ending in `.md` and it's left as-is.
  *
  * To backdate, pass `created` / `dataModified` (ms epoch). `/ks/note/create`
  * ignores these in its body (the server stamps "now"), so we apply them with a
@@ -65,7 +76,7 @@ export async function createMarkdownNote (wiz, { title, markdown = '', category 
     kbGuid: wiz.kbGuid,
     owner: wiz.userId,
     category,
-    title,
+    title: ensureMdSuffix(title),
     tags,
     type: 'lite/markdown',
     html: wrapMarkdown(markdown)
@@ -85,7 +96,7 @@ export async function createMarkdownNote (wiz, { title, markdown = '', category 
 export async function updateMarkdownNote (wiz, { docGuid, markdown = '', title }) {
   if (!docGuid) throw new Error('updateMarkdownNote: docGuid required')
   if (title) {
-    await wiz.kb.patchNoteInfo(docGuid, { title })
+    await wiz.kb.patchNoteInfo(docGuid, { title: ensureMdSuffix(title) })
   }
   return wiz.kb.updateNote(docGuid, {
     kbGuid: wiz.kbGuid,

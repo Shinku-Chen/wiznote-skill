@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  wrapMarkdown, unwrapMarkdown,
+  wrapMarkdown, unwrapMarkdown, ensureMdSuffix,
   createMarkdownNote, updateMarkdownNote, readMarkdownNote
 } from '../src/markdown.js'
 
@@ -63,7 +63,7 @@ test('createMarkdownNote passes lite/markdown + wrapped html to createNote', asy
   const body = c.calls.create[0]
   assert.equal(body.type, 'lite/markdown')
   assert.equal(body.category, '/x/')
-  assert.equal(body.title, 't')
+  assert.equal(body.title, 't.md')   // .md suffix enforced
   assert.match(body.html, /^<!doctype html>/)
   assert.match(body.html, /<pre># body<\/pre>/)
 })
@@ -87,6 +87,24 @@ test('createMarkdownNote backdates created/dataModified via a post-create patch'
   assert.equal(patched.dataModified, 1577836800000)
 })
 
+test('ensureMdSuffix appends .md only when missing (case-insensitive)', () => {
+  assert.equal(ensureMdSuffix('周报 2026-07-20'), '周报 2026-07-20.md')
+  assert.equal(ensureMdSuffix('notes.md'), 'notes.md')
+  assert.equal(ensureMdSuffix('README.MD'), 'README.MD')  // already has it, any case
+})
+
+test('createMarkdownNote appends .md to the title', async () => {
+  const c = makeStub()
+  await createMarkdownNote(c, { title: '周报 2026-07-20', markdown: 'x' })
+  assert.equal(c.calls.create[0].title, '周报 2026-07-20.md')
+})
+
+test('createMarkdownNote does not double-append .md', async () => {
+  const c = makeStub()
+  await createMarkdownNote(c, { title: 'already.md', markdown: 'x' })
+  assert.equal(c.calls.create[0].title, 'already.md')
+})
+
 test('createMarkdownNote requires a title', async () => {
   const c = makeStub()
   await assert.rejects(() => createMarkdownNote(c, { markdown: 'x' }), /title required/)
@@ -95,7 +113,7 @@ test('createMarkdownNote requires a title', async () => {
 test('updateMarkdownNote wraps and updates; separately updates title', async () => {
   const c = makeStub()
   await updateMarkdownNote(c, { docGuid: 'd', markdown: '# new', title: 'newT' })
-  assert.equal(c.calls.updateInfo[0].payload.title, 'newT')
+  assert.equal(c.calls.updateInfo[0].payload.title, 'newT.md')  // .md enforced on rename too
   const payload = c.calls.update[0].payload
   assert.match(payload.html, /<pre># new<\/pre>/)
   assert.equal(payload.docGuid, 'd')
