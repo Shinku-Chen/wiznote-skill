@@ -29,7 +29,7 @@ cd ~/.claude/skills/wiznote-api && npm run setup
 
 ## Public cloud vs on-premise
 
-- **Public cloud** (default): AS at `https://as.wiz.cn`, KS returned dynamically after login.
+- **Public cloud** (default): AS at `https://note.wiz.cn` (legacy host `as.wiz.cn` still works; override via `--endpoint`/`WIZ_ENDPOINT`/`accountBaseUrl`), KS returned dynamically after login.
 - **On-premise / 私有化**: pass `--endpoint=https://your-host:port` to `wiz login`, or set `WIZ_ENDPOINT`. Both AS and KS resolve to that single host.
 
 ## First-time login (interactive, once per machine)
@@ -200,7 +200,7 @@ await wiz.switchKb(teamKbGuid, { kbServer: 'https://groupks01.wiz.cn' })
 `kb.downloadObject(docGuid, {objType, objId?})` → `Buffer`. Handles `objType: 'resource'|'attachment'` well; `'document'` and `'abstract'` may 500 for notes without those objects. Prefer the dedicated `downloadResource` / `downloadAttachment` for the common cases.
 
 ### Sharing (public/team share links — LIVES ON AS, not KS)
-Sharing endpoints hit the Account Server (`https://as.wiz.cn` or your on-premise AS). WizClient wraps them so you don't hand-manage the host:
+Sharing endpoints hit the Account Server (`https://note.wiz.cn` or your on-premise AS). WizClient wraps them so you don't hand-manage the host:
 
 | Method | Endpoint |
 |---|---|

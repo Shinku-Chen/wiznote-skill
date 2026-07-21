@@ -32,7 +32,7 @@ export class WizClient {
    * @param {string} opts.kbGuid
    * @param {string} [opts.kbServer]  KS host, e.g. https://kshttps0.wiz.cn (or endpoint fallback)
    * @param {string} [opts.userId]
-   * @param {string} [opts.accountBaseUrl]  AS host; defaults to endpoint or https://as.wiz.cn
+   * @param {string} [opts.accountBaseUrl]  AS host; defaults to endpoint or https://note.wiz.cn
    * @param {string} [opts.endpoint]  On-premise shortcut: fills accountBaseUrl AND kbServer.
    */
   constructor ({ token, kbGuid, kbServer, userId, userGuid, accountBaseUrl, endpoint } = {}) {
@@ -116,7 +116,7 @@ export class WizClient {
         // Network/TLS failures land here as bare `fetch failed`; the useful bit
         // is the cause code (e.g. CERT_HAS_EXPIRED). Include it.
         const detail = e?.cause?.code ? `${e.message} (${e.cause.code})` : e?.message || String(e)
-        return { ok: false, reason: `re-login to ${this.accountBaseUrl || 'https://as.wiz.cn'} failed: ${detail}` }
+        return { ok: false, reason: `re-login to ${this.accountBaseUrl || 'https://note.wiz.cn'} failed: ${detail}` }
       }
     })()
     try { return await this._reauthInFlight }

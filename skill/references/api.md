@@ -14,7 +14,7 @@ This file adds routes the upstream docs don't cover (collab-note WebSocket share
 
 | Server | Default host | Discovery |
 |---|---|---|
-| Account Server (AS) | `https://as.wiz.cn` | fixed; can be overridden pre-login |
+| Account Server (AS) | `https://note.wiz.cn` | default; overridable pre-login (legacy host: `as.wiz.cn`) |
 | Knowledge Base (KS) | dynamic | returned in `Login` response as `kbServer` |
 
 ## Authentication
@@ -22,7 +22,7 @@ This file adds routes the upstream docs don't cover (collab-note WebSocket share
 `X-Wiz-Token: <token>` header on every KS call after login.
 
 ```
-POST https://as.wiz.cn/as/user/login
+POST https://note.wiz.cn/as/user/login
 { "userId": "a@b.com", "password": "..." }
 
 → { returnCode:200, result:{ token, kbGuid, kbServer, userGuid, ... } }
@@ -175,7 +175,7 @@ Always start & end with `/` for non-root.
 
 ```bash
 # 1. login
-TOKEN=$(curl -sX POST https://as.wiz.cn/as/user/login \
+TOKEN=$(curl -sX POST https://note.wiz.cn/as/user/login \
   -H 'Content-Type: application/json' \
   -d '{"userId":"a@b.com","password":"***"}' | jq -r .result.token)
 KB=$(...)      # kbGuid from same response

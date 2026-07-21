@@ -121,7 +121,7 @@ The endpoint value is persisted alongside the other session metadata, so subsequ
 node ~/.claude/skills/wiznote-api/scripts/wiz.js login
 ```
 
-The password is sent once to `https://as.wiz.cn/as/user/login` and discarded. On success:
+The password is sent once to `https://note.wiz.cn/as/user/login` and discarded. On success:
 
 - **Keychain available** → token → Keychain; metadata (userId/kbGuid/kbServer) → `~/.config/wiznote/session.json`
 - **Keychain unavailable** → token + metadata → `~/.config/wiznote/session.json` (mode `0600`)
@@ -157,5 +157,5 @@ rm -rf ~/.claude/skills/wiznote-api
 | `keytar` install fails | Missing native toolchain | See per-platform notes above, or just skip it |
 | `kbGuid is not match` on API call | Note was moved to a different KB | Clear the local `docGuid`; refetch from server |
 | Token expired errors | TTL ran out | `wiz login` again, or call `keepTokenAlive` periodically in long-running processes |
-| Behind corporate proxy | fetch can't reach `as.wiz.cn` | Set `HTTPS_PROXY=http://...` before invoking Node (Node 18+ respects it via undici) |
+| Behind corporate proxy | fetch can't reach `note.wiz.cn` | Set `HTTPS_PROXY=http://...` before invoking Node (Node 18+ respects it via undici) |
 | Node < 18 error | No built-in `fetch` | Upgrade Node, or install a `fetch` polyfill (not officially supported) |

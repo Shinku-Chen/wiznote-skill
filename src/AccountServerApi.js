@@ -1,6 +1,10 @@
 import { execRequest } from './request.js'
 
-const DEFAULT_AS = 'https://as.wiz.cn'
+// Public-cloud account server default. Historically as.wiz.cn; switched to
+// note.wiz.cn (the brand domain, same AS API) — as.wiz.cn's cert has lapsed
+// between ZeroSSL renewals. Override pre-login via --endpoint / WIZ_ENDPOINT /
+// accountBaseUrl for on-premise or to pin the legacy host.
+const DEFAULT_AS = 'https://note.wiz.cn'
 
 export class AccountServerApi {
   constructor ({ baseUrl = DEFAULT_AS } = {}) {
