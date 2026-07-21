@@ -1,23 +1,50 @@
 #!/usr/bin/env node
 import { WizClient } from '../src/index.js'
-import { resolveCredentials } from '../src/credentials.js'
+import {
+  resolveCredentials,
+  setInsecureTlsUntil, getInsecureTlsUntil, clearInsecureTlsUntil
+} from '../src/credentials.js'
 import readline from 'node:readline'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
 // Escape hatch for when WizNote's own server cert has expired (e.g. as.wiz.cn
-// lapsing between ZeroSSL renewals): `--insecure` (anywhere) or WIZ_INSECURE_TLS=1
-// skips TLS verification for THIS process only. Off by default — it weakens
-// transport security, so it must be turned on deliberately, per outage.
-// Consume the flag here so it never gets mistaken for the command/positional.
+// lapsing between ZeroSSL renewals). Three ways to skip TLS verification, all
+// off by default (they weaken transport security, so must be turned on
+// deliberately): the one-shot `--insecure` flag, the WIZ_INSECURE_TLS env var,
+// or a persisted time-boxed window set via `wiz insecure-tls on` (see below).
+// Consume `--insecure` here so it's never mistaken for the command/positional.
 const argv = process.argv.slice(2).filter(a => a !== '--insecure')
-const insecure = argv.length !== process.argv.length - 2 ||
+const insecureFlag = argv.length !== process.argv.length - 2 ||
   /^(1|true|yes)$/i.test(process.env.WIZ_INSECURE_TLS || '')
-if (insecure) {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
-  console.error('⚠  TLS certificate verification DISABLED (--insecure / WIZ_INSECURE_TLS). Use only to work around an expired server cert.')
-}
 const [cmd, ...rest] = argv
+
+// Turn off cert verification for this process, once. `why` explains the source
+// so the stderr warning is actionable.
+function disableTls (why) {
+  if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0') return
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
+  console.error(`⚠  TLS certificate verification DISABLED (${why}). Use only to work around an expired server cert.`)
+}
+
+function fmtRemaining (ms) {
+  const d = Math.floor(ms / 86400000)
+  const h = Math.floor((ms % 86400000) / 3600000)
+  const m = Math.floor((ms % 3600000) / 60000)
+  return d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${m}m`
+}
+
+// Resolve the effective insecure state, honouring (in order): the one-shot flag
+// / env var, then the persisted auto-expiring window. Called at the top of
+// main() so TLS is relaxed before any request fires.
+async function applyInsecureTls () {
+  if (insecureFlag) { disableTls('--insecure / WIZ_INSECURE_TLS'); return }
+  const until = await getInsecureTlsUntil()
+  if (!until) return
+  const left = until - Date.now()
+  if (left <= 0) { await clearInsecureTlsUntil(); return } // window elapsed — self-heal
+  disableTls(`insecure-tls window active, ${fmtRemaining(left)} left → expires ${new Date(until).toLocaleString()}`)
+}
 
 function usage () {
   console.log(`wiz <command>
@@ -29,6 +56,10 @@ function usage () {
   logout             Clear stored token AND stored password
   save-password      Re-enable auto-reauth by storing password now
   forget-password    Disable auto-reauth by clearing the stored password only
+  insecure-tls <on [--days=N] | off | status>
+                     Global switch to ignore TLS cert errors (default 3 days,
+                     auto-expires). Use only while a WizNote server cert is
+                     lapsed; run 'insecure-tls off' once it's renewed.
   whoami             Show current session
   ls [category] [--start=N] [--count=N] [--all]
                      List notes in a category. Default: root, count=50.
@@ -79,9 +110,9 @@ function usage () {
                                           <img>/<audio>/<video>/<file-card> blocks
 
 Global flags:
-  --insecure         Skip TLS cert verification for this run (or set
-                     WIZ_INSECURE_TLS=1). Only for working around an expired
-                     WizNote server cert; leave off in normal use.
+  --insecure         Skip TLS cert verification for THIS run only (or set
+                     WIZ_INSECURE_TLS=1). For a persistent, auto-expiring
+                     switch use 'wiz insecure-tls on'. Normal use: leave off.
 
 Environment overrides: WIZ_USER, WIZ_TOKEN, WIZ_KB_GUID, WIZ_KB_SERVER, WIZ_INSECURE_TLS`)
 }
@@ -123,7 +154,39 @@ function parseTimeFlags (flags) {
 
 async function main () {
   try {
+    await applyInsecureTls()
     switch (cmd) {
+      case 'insecure-tls': {
+        // Persisted, auto-expiring switch to ignore TLS cert errors.
+        //   wiz insecure-tls on [--days=N]   (default 3)
+        //   wiz insecure-tls off
+        //   wiz insecure-tls status
+        const sub = rest[0] || 'status'
+        const flags = {}
+        for (const a of rest.slice(1)) {
+          const m = a.match(/^--([^=]+)(?:=(.*))?$/)
+          if (m) flags[m[1]] = m[2] === undefined ? true : m[2]
+        }
+        if (sub === 'on') {
+          const days = Number(flags.days) > 0 ? Number(flags.days) : 3
+          const until = Date.now() + Math.round(days * 86400000)
+          await setInsecureTlsUntil(until)
+          console.log(`Insecure-TLS enabled for ${days} day(s). Certificate errors will be ignored until ${new Date(until).toLocaleString()}.`)
+          console.log('⚠  This weakens transport security. Run `wiz insecure-tls off` once WizNote renews its cert.')
+        } else if (sub === 'off') {
+          await clearInsecureTlsUntil()
+          console.log('Insecure-TLS disabled. Certificate verification is back on.')
+        } else if (sub === 'status') {
+          const until = await getInsecureTlsUntil()
+          const left = until - Date.now()
+          if (until && left > 0) console.log(`Insecure-TLS: ON, ${fmtRemaining(left)} left (expires ${new Date(until).toLocaleString()}).`)
+          else console.log('Insecure-TLS: OFF.')
+        } else {
+          console.error('usage: wiz insecure-tls <on [--days=N] | off | status>')
+          process.exit(1)
+        }
+        break
+      }
       case 'login': {
         // Support: wiz login [--endpoint=URL] [--save-password]
         const flags = {}

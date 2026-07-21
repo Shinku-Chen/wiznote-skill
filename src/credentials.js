@@ -101,17 +101,52 @@ export async function resolveCredentials ({ userId, token, kbGuid, kbServer, acc
 export async function saveSession ({ userId, token, kbGuid, kbServer, accountBaseUrl, userGuid }) {
   if (!userId || !token) throw new Error('saveSession requires userId and token')
 
+  // Carry over non-session state (e.g. the insecure-TLS window) so a login /
+  // silent reauth rewrite doesn't silently clear a switch the user turned on.
+  const prev = await readConfigFile()
+  const carry = prev?.insecureTlsUntil !== undefined ? { insecureTlsUntil: prev.insecureTlsUntil } : {}
+
   const keytar = await loadKeytar()
   let stored = 'keychain'
   if (keytar) {
     await keytar.setPassword(SERVICE, userId, token)
   } else {
     stored = 'file'
-    await writeConfigFile({ userId, userGuid, kbGuid, kbServer, accountBaseUrl, token, _warning: 'keytar not installed; token stored in plaintext file. Install keytar to upgrade.' })
+    await writeConfigFile({ userId, userGuid, kbGuid, kbServer, accountBaseUrl, token, ...carry, _warning: 'keytar not installed; token stored in plaintext file. Install keytar to upgrade.' })
     return { stored }
   }
-  await writeConfigFile({ userId, userGuid, kbGuid, kbServer, accountBaseUrl })
+  await writeConfigFile({ userId, userGuid, kbGuid, kbServer, accountBaseUrl, ...carry })
   return { stored }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Insecure-TLS window (opt-in, time-boxed)
+//
+// Persist an expiry timestamp so the user can flip a global "ignore cert errors"
+// switch once (e.g. while WizNote's as.wiz.cn cert is lapsed) instead of passing
+// --insecure on every command. Auto-expires — nothing stays insecure forever.
+// Stored in session.json; survives login/reauth rewrites (see saveSession).
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Enable the insecure-TLS window until `untilMs` (epoch ms). */
+export async function setInsecureTlsUntil (untilMs) {
+  const cfg = (await readConfigFile()) || {}
+  cfg.insecureTlsUntil = untilMs
+  await writeConfigFile(cfg)
+}
+
+/** Read the insecure-TLS expiry (epoch ms, 0 if unset). */
+export async function getInsecureTlsUntil () {
+  const cfg = await readConfigFile()
+  return Number(cfg?.insecureTlsUntil) || 0
+}
+
+/** Clear the insecure-TLS window. */
+export async function clearInsecureTlsUntil () {
+  const cfg = await readConfigFile()
+  if (!cfg || cfg.insecureTlsUntil === undefined) return
+  delete cfg.insecureTlsUntil
+  await writeConfigFile(cfg)
 }
 
 export async function clearSession ({ userId } = {}) {
