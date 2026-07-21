@@ -5,7 +5,19 @@ import readline from 'node:readline'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
-const [, , cmd, ...rest] = process.argv
+// Escape hatch for when WizNote's own server cert has expired (e.g. as.wiz.cn
+// lapsing between ZeroSSL renewals): `--insecure` (anywhere) or WIZ_INSECURE_TLS=1
+// skips TLS verification for THIS process only. Off by default — it weakens
+// transport security, so it must be turned on deliberately, per outage.
+// Consume the flag here so it never gets mistaken for the command/positional.
+const argv = process.argv.slice(2).filter(a => a !== '--insecure')
+const insecure = argv.length !== process.argv.length - 2 ||
+  /^(1|true|yes)$/i.test(process.env.WIZ_INSECURE_TLS || '')
+if (insecure) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
+  console.error('⚠  TLS certificate verification DISABLED (--insecure / WIZ_INSECURE_TLS). Use only to work around an expired server cert.')
+}
+const [cmd, ...rest] = argv
 
 function usage () {
   console.log(`wiz <command>
@@ -66,7 +78,12 @@ function usage () {
                                           Upload files to collab note and insert
                                           <img>/<audio>/<video>/<file-card> blocks
 
-Environment overrides: WIZ_USER, WIZ_TOKEN, WIZ_KB_GUID, WIZ_KB_SERVER`)
+Global flags:
+  --insecure         Skip TLS cert verification for this run (or set
+                     WIZ_INSECURE_TLS=1). Only for working around an expired
+                     WizNote server cert; leave off in normal use.
+
+Environment overrides: WIZ_USER, WIZ_TOKEN, WIZ_KB_GUID, WIZ_KB_SERVER, WIZ_INSECURE_TLS`)
 }
 
 function ask (question, { silent = false } = {}) {
