@@ -45,8 +45,10 @@ export class WizClient {
     this.token = token
     this.kbGuid = kbGuid
     this.kbServer = finalKbServer
-    this.accountBaseUrl = finalAsUrl
     this.account = new AccountServerApi({ baseUrl: finalAsUrl })
+    // Mirror the API object's resolved baseUrl so this is never `undefined`
+    // when no endpoint/accountBaseUrl was passed (it defaults to note.wiz.cn).
+    this.accountBaseUrl = this.account.baseUrl
     this._kbInner = new KnowledgeBaseApi({ baseUrl: finalKbServer, kbGuid, token })
     // Expose kb via a Proxy that auto-retries on auth failure IF the user has
     // opted into password storage (savePassword). Otherwise pass through.
@@ -280,6 +282,9 @@ export class WizClient {
     if (!userId || !password) throw new Error('login requires userId and password')
     const asUrl = accountBaseUrl || endpoint
     const account = new AccountServerApi({ baseUrl: asUrl })
+    // Resolved AS host (defaults to note.wiz.cn when neither was passed) — persist
+    // and return this, not the raw `asUrl`, so it's never undefined.
+    const resolvedAsUrl = account.baseUrl
     const result = await account.login({ userId, password })
     // If server returned an on-premise kbServer that matches the endpoint host, keep endpoint for consistency
     const kbServer = result.kbServer || endpoint
@@ -289,7 +294,7 @@ export class WizClient {
         token: result.token,
         kbGuid: result.kbGuid,
         kbServer,
-        accountBaseUrl: asUrl,
+        accountBaseUrl: resolvedAsUrl,
         userGuid: result.userGuid
       })
     }
@@ -305,7 +310,7 @@ export class WizClient {
       token: result.token,
       kbGuid: result.kbGuid,
       kbServer,
-      accountBaseUrl: asUrl
+      accountBaseUrl: resolvedAsUrl
     })
   }
 
