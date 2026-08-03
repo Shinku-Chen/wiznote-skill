@@ -49,12 +49,16 @@ async function applyInsecureTls () {
 function usage () {
   console.log(`wiz <command>
 
-  login [--endpoint=URL] [--no-save-password]
-                     Authenticate. Token + password both stored in OS Keychain
-                     by default; auto-reauth kicks in when token expires.
+  login [--user=EMAIL] [--password-stdin] [--endpoint=URL] [--no-save-password]
+                     Authenticate. Token + password both stored by default
+                     (OS Keychain, or an encrypted 0600 file when keytar is
+                     unavailable); auto-reauth kicks in when the token expires.
+                     Non-interactive (containers/CI):
+                       echo "$PW" | wiz login --user=you@x.com --password-stdin
                      --no-save-password: store only the token, no auto-reauth.
   logout             Clear stored token AND stored password
-  save-password      Re-enable auto-reauth by storing password now
+  save-password [--password-stdin]
+                     Re-enable auto-reauth by storing password now
   forget-password    Disable auto-reauth by clearing the stored password only
   insecure-tls <on [--days=N] | off | status>
                      Global switch to ignore TLS cert errors (default 3 days,
@@ -131,6 +135,28 @@ function ask (question, { silent = false } = {}) {
   })
 }
 
+// Read the whole piped stdin (for `--password-stdin`). Strips a single trailing
+// newline so `echo "$PW" | wiz login --password-stdin` doesn't include the \n.
+async function readStdin () {
+  const chunks = []
+  for await (const chunk of process.stdin) chunks.push(chunk)
+  return Buffer.concat(chunks).toString('utf8').replace(/\r?\n$/, '')
+}
+
+// Resolve a password non-interactively (--password-stdin) or, only when a real
+// TTY is attached, via the silent prompt. In a headless context with neither,
+// fail with an actionable message instead of hanging on readline forever.
+async function resolvePassword (flags, { promptLabel = 'Password: ' } = {}) {
+  if (flags['password-stdin']) return await readStdin()
+  if (process.stdin.isTTY) return await ask(promptLabel, { silent: true })
+  console.error(
+    'No password provided and stdin is not a TTY.\n' +
+    'Pipe it in non-interactively, e.g.:\n' +
+    '  echo "$WIZ_PW" | wiz login --user=you@example.com --password-stdin'
+  )
+  process.exit(1)
+}
+
 // Parse a timestamp flag into ms, or exit on an unparseable value.
 // Accepts a millisecond epoch (`1700000000000`) or any Date-parseable string
 // (`2023-05-01`, `2023/05/01 08:00`).
@@ -189,7 +215,7 @@ async function main () {
         break
       }
       case 'login': {
-        // Support: wiz login [--endpoint=URL] [--save-password]
+        // Support: wiz login [--user=EMAIL] [--password-stdin] [--endpoint=URL] [--no-save-password]
         const flags = {}
         for (const a of rest) {
           const m = a.match(/^--([^=]+)(?:=(.*))?$/)
@@ -200,15 +226,26 @@ async function main () {
         const doSavePassword = flags['no-save-password'] ? false : true
         if (endpoint) console.log(`Using endpoint: ${endpoint}`)
         if (doSavePassword) {
-          console.log('Password will be stored in OS Keychain to enable auto-reauth')
-          console.log('(pass --no-save-password to skip).')
+          console.log('Password will be stored to enable auto-reauth (OS Keychain, or an')
+          console.log('encrypted 0600 file when keytar is unavailable). Pass --no-save-password to skip.')
         } else {
           console.log('Password will NOT be stored. Token expires ~every 15 min; you\'ll need to re-run `wiz login`.')
         }
-        const userId = await ask('WizNote userId (email): ')
-        const password = await ask('Password: ', { silent: true })
+        // userId: --user flag (required for the non-interactive stdin path,
+        // which consumes stdin and so can't also prompt), else TTY prompt.
+        let userId = flags.user
+        if (!userId && !flags['password-stdin'] && process.stdin.isTTY) {
+          userId = await ask('WizNote userId (email): ')
+        }
+        userId = (userId || '').trim()
+        if (!userId) {
+          console.error('Missing userId. Pass --user=you@example.com (required with --password-stdin).')
+          process.exit(1)
+        }
+        const password = await resolvePassword(flags)
+        if (!password) { console.error('Empty password.'); process.exit(1) }
         const wiz = await WizClient.login({
-          userId: userId.trim(), password, endpoint,
+          userId, password, endpoint,
           savePassword: doSavePassword
         })
         console.log(`\nLogged in as ${wiz.userId}`)
@@ -216,19 +253,26 @@ async function main () {
         console.log(`  kbServer     : ${wiz.kbServer}`)
         console.log(`  accountBaseUrl: ${wiz.accountBaseUrl}`)
         console.log(`  token        : stored in OS Keychain (or ~/.config/wiznote/session.json if keytar unavailable)`)
-        if (doSavePassword) console.log('  password     : stored in OS Keychain (auto-reauth enabled)')
+        if (doSavePassword) console.log('  password     : stored for auto-reauth (OS Keychain, or ~/.config/wiznote/password.enc.json encrypted if keytar unavailable)')
         break
       }
       case 'save-password': {
         // Opt-in without doing a full login. Useful if user forgot --save-password.
+        // Supports --password-stdin for headless use.
+        const flags = {}
+        for (const a of rest) {
+          const m = a.match(/^--([^=]+)(?:=(.*))?$/)
+          if (m) flags[m[1]] = m[2] === undefined ? true : m[2]
+        }
         const c = await resolveCredentials().catch(() => null)
         if (!c || !c.userId) { console.error('Run `wiz login` first.'); process.exit(1) }
-        console.log('⚠  This will store your WizNote password in OS Keychain.')
-        console.log('   The SDK will use it to silently re-login when the token expires.')
-        const password = await ask('Password: ', { silent: true })
+        console.log('⚠  This will store your WizNote password (OS Keychain, or an encrypted')
+        console.log('   0600 file when keytar is unavailable) for silent re-login on token expiry.')
+        const password = await resolvePassword(flags)
+        if (!password) { console.error('Empty password.'); process.exit(1) }
         const { WizClient } = await import('../src/index.js')
-        await WizClient.savePassword(c.userId, password)
-        console.log(`Password saved for ${c.userId}. Auto-reauth is now enabled.`)
+        const { stored } = await WizClient.savePassword(c.userId, password)
+        console.log(`Password saved for ${c.userId} (${stored}). Auto-reauth is now enabled.`)
         break
       }
       case 'forget-password': {

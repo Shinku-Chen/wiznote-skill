@@ -32,15 +32,22 @@ cd ~/.claude/skills/wiznote-api && npm run setup
 - **Public cloud** (default): AS at `https://note.wiz.cn` (legacy host `as.wiz.cn` still works; override via `--endpoint`/`WIZ_ENDPOINT`/`accountBaseUrl`), KS returned dynamically after login.
 - **On-premise / 私有化**: pass `--endpoint=https://your-host:port` to `wiz login`, or set `WIZ_ENDPOINT`. Both AS and KS resolve to that single host.
 
-## First-time login (interactive, once per machine)
+## First-time login (once per machine)
 
 Tell the user to run this **in their own terminal** — never accept a password in chat:
 
 ```bash
+# Interactive (desktop, with a TTY):
 node ~/.claude/skills/wiznote-api/scripts/wiz.js login
+
+# Non-interactive (containers / CI / OpenClaw — no TTY, no keychain):
+echo "$WIZ_PW" | node ~/.claude/skills/wiznote-api/scripts/wiz.js login \
+  --user=you@example.com --password-stdin [--endpoint=https://your-host]
 ```
 
-The password is exchanged for a `token` via the WizNote account server and immediately discarded. Only the token is persisted:
+`--password-stdin` keeps the password out of `argv` / shell history. `--user` is required with it. With no TTY and no `--password-stdin`, the CLI errors instead of hanging.
+
+The password is exchanged for a `token` via the WizNote account server. The token is persisted, and (unless `--no-save-password`) so is the password — in the OS Keychain, or AES-256-GCM encrypted at `~/.config/wiznote/password.enc.json` when keytar is unavailable:
 
 1. **OS Keychain** (macOS Keychain / Windows Credential Manager / libsecret) via `keytar` — preferred
 2. `~/.config/wiznote/session.json` (mode `0600`) — fallback
@@ -73,13 +80,13 @@ If you're writing a script that the user will run, put it in `scripts/` and refe
 
 ## Auto-reauth (on by default)
 
-WizNote tokens have a ~15-minute TTL. To avoid `Invalid token` errors after idle periods, `wiz login` **stores the password in OS Keychain by default** alongside the token. When any `wiz.kb.*` call fails with an auth-shaped error, the client silently re-logs in with the stored password and retries once — the caller sees success.
+WizNote tokens have a ~15-minute TTL. To avoid `Invalid token` errors after idle periods, `wiz login` **stores the password by default** alongside the token. When any `wiz.kb.*` call fails with an auth-shaped error, the client silently re-logs in with the stored password and retries once — the caller sees success.
 
 Opt-out: `wiz login --no-save-password`, or turn off after the fact with `wiz forget-password`. `wiz save-password` re-enables it post-login.
 
-**Trade-off (state this to the user before proceeding on their behalf):** Keychain is OS-encrypted and scoped per user account, so other OS users on the same machine can't read it. But **any process running as the same OS user** can pull the password back via keytar. On shared machines or non-trusted user environments, pass `--no-save-password`.
+**Where the password lives:** OS Keychain when `keytar` is available; otherwise AES-256-GCM encrypted at `~/.config/wiznote/password.enc.json` (mode `0600`), no plaintext on disk. So auto-reauth now works in keytar-less Linux containers too.
 
-Password storage requires `keytar` (`npm run setup`). If keytar isn't available, `wiz login` logs a one-line warning and continues without storing the password — auto-reauth simply won't fire.
+**Trade-off (state this to the user before proceeding on their behalf):** Keychain is OS-encrypted and scoped per user account. The encrypted-file fallback uses a key *derived from host-local identifiers* (machine-id, uid, hostname) with no key stored on disk — this is encryption **at rest** (stops backup/log/`grep` leakage), but any process running as the same OS user, or anyone with the container filesystem, can re-derive it. On shared or non-trusted hosts, prefer `--no-save-password` + env-only credentials. Note: if the container's `machine-id` changes on rebuild, the encrypted password can no longer be decrypted and the user must re-run `wiz login`.
 
 If `WizClient.fromStored()` throws "token not found", instruct the user to run `wiz login`. **Do NOT prompt for the password inside the chat.** Full rationale: [skill/references/credentials.md](skill/references/credentials.md).
 

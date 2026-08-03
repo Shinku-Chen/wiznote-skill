@@ -27,10 +27,17 @@ Cursor 用户改成 `.cursor/skills/wiznote-api`,Workbuddy 用户改成 `~/.work
 **在自己终端里跑,别把密码贴进 AI 对话:**
 
 ```bash
+# 桌面 / 有 TTY:交互式输入账号密码
 node ~/.claude/skills/wiznote-api/scripts/wiz.js login
+
+# 容器 / CI / OpenClaw(无 TTY、无 keychain):从管道读密码,免交互
+echo "$WIZ_PW" | node ~/.claude/skills/wiznote-api/scripts/wiz.js login \
+  --user=you@example.com --password-stdin [--endpoint=https://你的私有化地址]
 ```
 
-问账号密码,登录成功后 **token 和密码都存进系统 Keychain**(macOS Keychain / Windows 凭据管理器 / Linux libsecret)。之后 AI 直接用 token 调接口,永远看不到你的密码;WizNote token ~15 分钟过期时,skill 会自动用密码悄悄续登,你无感。
+登录成功后 **token 和密码都会保存**:有 keytar 时进系统 Keychain(macOS Keychain / Windows 凭据管理器 / Linux libsecret);**没有 keytar 时,密码会 AES-256-GCM 加密后写到 `~/.config/wiznote/password.enc.json`(0600),不落明文**。之后 AI 直接用 token 调接口,永远看不到你的密码;token ~15 分钟过期时,skill 用保存的密码自动续登,你无感。
+
+`--password-stdin` 让密码只走管道,不进 `argv` / shell 历史;用它时必须配 `--user`。无 TTY 又没给 `--password-stdin` 时,CLI 会直接报错,不会卡在输入提示上。
 
 不想存密码?加 `--no-save-password`,只存 token,过期后再手动 `wiz login` 一次。
 
@@ -53,7 +60,7 @@ wiz save-password            # 已登录的,现在开启自动续登
 wiz forget-password          # 关闭自动续登(清密码,token 保留)
 ```
 
-**权衡说明**:Keychain 是加密存储,同机不同 OS 用户读不到你的密码。但**同一 OS 账号下**跑的任何程序都能通过 keytar 读回来。共享机器 / 不放心的场景加 `--no-save-password`。
+**权衡说明**:Keychain 是系统加密存储,同机不同 OS 用户读不到你的密码;但**同一 OS 账号下**跑的任何程序都能通过 keytar 读回来。无 keytar 的加密文件降级方案,密钥是**由本机标识(machine-id、uid、hostname)现场推导的,不落盘**——属于「静态加密」,能挡住备份 / 日志 / `grep` 的明文泄露,但拿到容器文件系统的人可以重新推导出密钥,不能替代真正的密钥管理。共享机器 / 不放心的场景加 `--no-save-password`,或改用纯环境变量凭据。另外:容器重建导致 `machine-id` 变化时,旧的加密密码将无法解密,需要重新 `wiz login`。
 
 ## 常用命令
 
