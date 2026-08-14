@@ -16,6 +16,8 @@ Both are installed by `npm run setup`.
 
 ## Where to put the skill
 
+This skill works with any AI agent. Common paths:
+
 | Agent | Path | Scope |
 |---|---|---|
 | Claude Code | `~/.claude/skills/wiznote-api` | user-global |
@@ -42,7 +44,7 @@ git clone https://github.com/Shinku-Chen/wiznote-skill.git <target-path>
 `keytar` is a native module — it needs a C++ toolchain and Python at install time. If your OS is set up for Node native builds this is a one-liner; otherwise see the per-platform notes.
 
 ```bash
-cd ~/.claude/skills/wiznote-api
+cd <wiznote-skill-dir>
 npm run setup       # equivalent to: npm i --no-save keytar
 ```
 
@@ -118,7 +120,7 @@ The endpoint value is persisted alongside the other session metadata, so subsequ
 ## First-time login
 
 ```bash
-node ~/.claude/skills/wiznote-api/scripts/wiz.js login
+node <wiznote-skill-dir>/scripts/wiz.js login
 ```
 
 The password is sent once to `https://note.wiz.cn/as/user/login` and discarded. On success:
@@ -129,14 +131,14 @@ The password is sent once to `https://note.wiz.cn/as/user/login` and discarded. 
 Verify:
 
 ```bash
-node ~/.claude/skills/wiznote-api/scripts/wiz.js whoami
-node ~/.claude/skills/wiznote-api/scripts/wiz.js ls
+node <wiznote-skill-dir>/scripts/wiz.js whoami
+node <wiznote-skill-dir>/scripts/wiz.js ls
 ```
 
 ## Upgrading
 
 ```bash
-cd ~/.claude/skills/wiznote-api
+cd <wiznote-skill-dir>
 git pull
 ```
 
@@ -145,8 +147,8 @@ Your credentials aren't touched — they live outside the repo (Keychain / `~/.c
 ## Uninstall
 
 ```bash
-node ~/.claude/skills/wiznote-api/scripts/wiz.js logout   # invalidate token server-side + clear local state
-rm -rf ~/.claude/skills/wiznote-api
+node <wiznote-skill-dir>/scripts/wiz.js logout   # invalidate token server-side + clear local state
+rm -rf <wiznote-skill-dir>
 ```
 
 ## Troubleshooting

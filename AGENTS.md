@@ -1,6 +1,6 @@
 # AGENTS.md
 
-给 AI agent(Claude Code / Cursor / Codex 等)读的仓库说明。用户视角的用法看 `README.md`;skill 自身的触发说明看 `SKILL.md`。
+给 AI agent 读的仓库说明。用户视角的用法看 `README.md`;skill 自身的触发说明看 `SKILL.md`。
 
 ## 项目概述
 

@@ -12,20 +12,13 @@ WizNote(为知笔记)接口的 AI Skill。让 AI 助手能安全地操作你的�
 
 > 把 `https://github.com/Shinku-Chen/wiznote-skill` 装成 skill
 
-或者自己一行,按你的 agent 选路径:
+或者自己一行,clone 到你的 agent 的 skills 目录里:
 
 ```bash
-# Claude Code
-git clone https://github.com/Shinku-Chen/wiznote-skill.git ~/.claude/skills/wiznote-api
-
-# Cursor
-git clone https://github.com/Shinku-Chen/wiznote-skill.git .cursor/skills/wiznote-api
-
-# Workbuddy
-git clone https://github.com/Shinku-Chen/wiznote-skill.git ~/.workbuddy/skills/wiznote-api
+git clone https://github.com/Shinku-Chen/wiznote-skill.git <你的-skills-目录>/wiznote-api
 ```
 
-Windows 详细路径见 [INSTALL.md](INSTALL.md)。
+常见 agent 的 skills 路径参考 [INSTALL.md](INSTALL.md)。
 
 **私有化服务器**(公司自建 WizNote):`wiz login --endpoint=https://your-host` 或 `export WIZ_ENDPOINT=...`。
 
@@ -35,14 +28,14 @@ Windows 详细路径见 [INSTALL.md](INSTALL.md)。
 
 ```bash
 # 桌面 / 有 TTY:交互式输入账号密码
-node ~/.claude/skills/wiznote-api/scripts/wiz.js login
+node <wiznote-skill-dir>/scripts/wiz.js login
 
 # 容器 / CI / OpenClaw(无 TTY、无 keychain):用环境变量,免交互
 WIZ_USER=you@example.com WIZ_PASSWORD=你的密码 \
-  node ~/.claude/skills/wiznote-api/scripts/wiz.js login [--endpoint=https://你的私有化地址]
+  node <wiznote-skill-dir>/scripts/wiz.js login [--endpoint=https://你的私有化地址]
 
 # 或者从管道读密码
-echo "$WIZ_PW" | node ~/.claude/skills/wiznote-api/scripts/wiz.js login \
+echo "$WIZ_PW" | node <wiznote-skill-dir>/scripts/wiz.js login \
   --user=you@example.com --password-stdin [--endpoint=https://你的私有化地址]
 ```
 
@@ -55,7 +48,7 @@ echo "$WIZ_PW" | node ~/.claude/skills/wiznote-api/scripts/wiz.js login \
 想启用 Keychain 需要额外一步(可选,不装也能跑,自动降级到 `0600` 文件):
 
 ```bash
-cd ~/.claude/skills/wiznote-api && npm run setup
+cd <wiznote-skill-dir> && npm run setup
 ```
 
 Windows / Linux 需要装编译工具链,见 [INSTALL.md](INSTALL.md)。
@@ -95,7 +88,7 @@ wiz save-password / forget-password  # 开/关自动续登
 wiz logout                       # 登出并清本地(token + 密码都清)
 ```
 
-(实际调用形式:`node ~/.claude/skills/wiznote-api/scripts/wiz.js <cmd>`,想省事可以在 shell 里 `alias wiz="node ~/.claude/skills/wiznote-api/scripts/wiz.js"`)
+(实际调用形式:`node <wiznote-skill-dir>/scripts/wiz.js <cmd>`,想省事可以在 shell 里 `alias wiz="node <wiznote-skill-dir>/scripts/wiz.js"`)
 
 ## AI 用起来是这样的
 

@@ -12,15 +12,10 @@ Node 18+ is required (uses built-in `fetch`). `keytar` is optional; without it, 
 ## Install (for the user)
 
 ```bash
-# Claude Code
-git clone https://github.com/Shinku-Chen/wiznote-skill.git ~/.claude/skills/wiznote-api
-
-# Cursor
-git clone https://github.com/Shinku-Chen/wiznote-skill.git .cursor/skills/wiznote-api
-
-# Workbuddy / OpenClaw (Windows: %USERPROFILE%\.workbuddy\skills\)
-git clone https://github.com/Shinku-Chen/wiznote-skill.git ~/.workbuddy/skills/wiznote-api
+git clone https://github.com/Shinku-Chen/wiznote-skill.git <your-skills-dir>/wiznote-api
 ```
+
+See [INSTALL.md](INSTALL.md) for common agent paths (Claude Code / Cursor / Workbuddy / Codex / …).
 
 Optional (recommended, enables OS Keychain):
 ```bash
