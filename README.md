@@ -10,7 +10,7 @@ WizNote(为知笔记)接口的 AI Skill。让 Claude Code、Cursor 等 AI 助手
 
 跟 AI 说一句就行:
 
-> 把 `https://github.com/Shinku-Chen/wiznote-skill` 装成 Claude Code(或 Cursor)的 skill
+> 把 `https://github.com/Shinku-Chen/wiznote-skill` 装成 skill
 
 或者自己一行:
 
