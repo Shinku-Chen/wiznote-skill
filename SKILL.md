@@ -5,7 +5,7 @@ description: 为知笔记 (WizNote / Wiz) REST API skill。用户提到"为知""
 
 # WizNote API Skill
 
-This skill is a **self-contained folder** — cloned into `~/.claude/skills/wiznote-api/` (or `.cursor/skills/wiznote-api/`). All code lives beside this file; no npm install needed to run.
+This skill is a **self-contained folder** — clone it into your agent's skills directory. All code lives beside this file; no npm install needed to run.
 
 Node 18+ is required (uses built-in `fetch`). `keytar` is optional; without it, tokens fall back to a `0600` file.
 
@@ -24,7 +24,7 @@ git clone https://github.com/Shinku-Chen/wiznote-skill.git ~/.workbuddy/skills/w
 
 Optional (recommended, enables OS Keychain):
 ```bash
-cd ~/.claude/skills/wiznote-api && npm run setup
+cd <your-skill-dir> && npm run setup
 ```
 
 ## Public cloud vs on-premise
@@ -38,15 +38,15 @@ Tell the user to run this **in their own terminal** — never accept a password 
 
 ```bash
 # Interactive (desktop, with a TTY):
-node ~/.claude/skills/wiznote-api/scripts/wiz.js login
+node <skill-dir>/scripts/wiz.js login
 
 # Non-interactive (containers / CI / OpenClaw — no TTY, no keychain):
 # Option A: env vars
-WIZ_USER=you@example.com WIZ_PASSWORD=... node ~/.claude/skills/wiznote-api/scripts/wiz.js login \
+WIZ_USER=you@example.com WIZ_PASSWORD=... node <skill-dir>/scripts/wiz.js login \
   [--endpoint=https://your-host]
 
 # Option B: pipe via stdin
-echo "$WIZ_PW" | node ~/.claude/skills/wiznote-api/scripts/wiz.js login \
+echo "$WIZ_PW" | node <skill-dir>/scripts/wiz.js login \
   --user=you@example.com --password-stdin [--endpoint=https://your-host]
 ```
 
@@ -528,8 +528,8 @@ Auth expired → `wiz.account.keepTokenAlive({ token })`; if it fails, re-run `w
 Run these in the user's terminal and report status back:
 
 ```bash
-node ~/.claude/skills/wiznote-api/scripts/wiz.js whoami   # prints userId/kbGuid/kbServer
-node ~/.claude/skills/wiznote-api/scripts/wiz.js ls       # first page of root notes
+node <skill-dir>/scripts/wiz.js whoami   # prints userId/kbGuid/kbServer
+node <skill-dir>/scripts/wiz.js ls       # first page of root notes
 ```
 
 If both succeed, the skill is ready.

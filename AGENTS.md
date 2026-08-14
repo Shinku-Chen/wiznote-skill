@@ -4,7 +4,7 @@
 
 ## 项目概述
 
-WizNote(为知笔记)REST API 的 AI Skill。作为**自包含的 skill 目录**被 clone 进各 agent 的 skills 路径(`~/.claude/skills/wiznote-api/`、`.cursor/skills/wiznote-api/`、`~/.workbuddy/skills/wiznote-api/`),让 agent 通过 `node scripts/wiz.js <cmd>` 完成登录、笔记 CRUD、搜索、文件夹/标签管理、图片附件上传、协作笔记资源读取等操作。支持公网 `note.wiz.cn`(默认,旧 host `as.wiz.cn` 仍可用)和企业自建 endpoint 两种模式。
+WizNote(为知笔记)REST API 的 AI Skill。作为**自包含的 skill 目录**被 clone 进各 agent 的 skills 路径,让 agent 通过 `node scripts/wiz.js <cmd>` 完成登录、笔记 CRUD、搜索、文件夹/标签管理、图片附件上传、协作笔记资源读取等操作。支持公网 `note.wiz.cn`(默认,旧 host `as.wiz.cn` 仍可用)和企业自建 endpoint 两种模式。
 
 铁律:**绝不硬编码凭据、绝不让用户在对话里贴密码**,一律 `wiz login` 交互登录,token(可选连同密码)存 OS Keychain,降级到 `0600` 文件。
 

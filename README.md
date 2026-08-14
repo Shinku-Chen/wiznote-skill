@@ -1,6 +1,6 @@
 # wiznote-api skill
 
-WizNote(为知笔记)接口的 AI Skill。让 Claude Code、Cursor 等 AI 助手能安全地操作你的为知笔记 —— 建笔记、搜笔记、管分类和标签、传图片、传/收/删附件。
+WizNote(为知笔记)接口的 AI Skill。让 AI 助手能安全地操作你的为知笔记 —— 建笔记、搜笔记、管分类和标签、传图片、传/收/删附件。
 
 密码可以选存或不存;存的话只进系统 Keychain,用来在 token(15 分钟)过期时自动续登。
 
@@ -12,13 +12,20 @@ WizNote(为知笔记)接口的 AI Skill。让 Claude Code、Cursor 等 AI 助手
 
 > 把 `https://github.com/Shinku-Chen/wiznote-skill` 装成 skill
 
-或者自己一行:
+或者自己一行,按你的 agent 选路径:
 
 ```bash
+# Claude Code
 git clone https://github.com/Shinku-Chen/wiznote-skill.git ~/.claude/skills/wiznote-api
+
+# Cursor
+git clone https://github.com/Shinku-Chen/wiznote-skill.git .cursor/skills/wiznote-api
+
+# Workbuddy
+git clone https://github.com/Shinku-Chen/wiznote-skill.git ~/.workbuddy/skills/wiznote-api
 ```
 
-Cursor 用户改成 `.cursor/skills/wiznote-api`,Workbuddy 用户改成 `~/.workbuddy/skills/wiznote-api`。Windows 详细路径见 [INSTALL.md](INSTALL.md)。
+Windows 详细路径见 [INSTALL.md](INSTALL.md)。
 
 **私有化服务器**(公司自建 WizNote):`wiz login --endpoint=https://your-host` 或 `export WIZ_ENDPOINT=...`。
 
