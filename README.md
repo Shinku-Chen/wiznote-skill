@@ -30,14 +30,18 @@ Cursor 用户改成 `.cursor/skills/wiznote-api`,Workbuddy 用户改成 `~/.work
 # 桌面 / 有 TTY:交互式输入账号密码
 node ~/.claude/skills/wiznote-api/scripts/wiz.js login
 
-# 容器 / CI / OpenClaw(无 TTY、无 keychain):从管道读密码,免交互
+# 容器 / CI / OpenClaw(无 TTY、无 keychain):用环境变量,免交互
+WIZ_USER=you@example.com WIZ_PASSWORD=你的密码 \
+  node ~/.claude/skills/wiznote-api/scripts/wiz.js login [--endpoint=https://你的私有化地址]
+
+# 或者从管道读密码
 echo "$WIZ_PW" | node ~/.claude/skills/wiznote-api/scripts/wiz.js login \
   --user=you@example.com --password-stdin [--endpoint=https://你的私有化地址]
 ```
 
 登录成功后 **token 和密码都会保存**:有 keytar 时进系统 Keychain(macOS Keychain / Windows 凭据管理器 / Linux libsecret);**没有 keytar 时,密码会 AES-256-GCM 加密后写到 `~/.config/wiznote/password.enc.json`(0600),不落明文**。之后 AI 直接用 token 调接口,永远看不到你的密码;token ~15 分钟过期时,skill 用保存的密码自动续登,你无感。
 
-`--password-stdin` 让密码只走管道,不进 `argv` / shell 历史;用它时必须配 `--user`。无 TTY 又没给 `--password-stdin` 时,CLI 会直接报错,不会卡在输入提示上。
+`WIZ_USER` / `WIZ_PASSWORD` 环境变量或 `--password-stdin` 让密码只走管道,不进 `argv` / shell 历史;`--password-stdin` 时必须配 `--user`。无 TTY 又没给环境变量或 `--password-stdin` 时,CLI 会直接报错,不会卡在输入提示上。
 
 不想存密码?加 `--no-save-password`,只存 token,过期后再手动 `wiz login` 一次。
 
