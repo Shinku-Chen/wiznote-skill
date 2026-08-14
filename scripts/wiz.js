@@ -54,6 +54,7 @@ function usage () {
                      (OS Keychain, or an encrypted 0600 file when keytar is
                      unavailable); auto-reauth kicks in when the token expires.
                      Non-interactive (containers/CI):
+                       WIZ_USER=you@x.com WIZ_PASSWORD=... wiz login
                        echo "$PW" | wiz login --user=you@x.com --password-stdin
                      --no-save-password: store only the token, no auto-reauth.
   logout             Clear stored token AND stored password
@@ -119,7 +120,7 @@ Global flags:
                      WIZ_INSECURE_TLS=1). For a persistent, auto-expiring
                      switch use 'wiz insecure-tls on'. Normal use: leave off.
 
-Environment overrides: WIZ_USER, WIZ_TOKEN, WIZ_KB_GUID, WIZ_KB_SERVER, WIZ_INSECURE_TLS`)
+Environment overrides: WIZ_USER, WIZ_PASSWORD, WIZ_TOKEN, WIZ_KB_GUID, WIZ_KB_SERVER, WIZ_INSECURE_TLS`)
 }
 
 function ask (question, { silent = false } = {}) {
@@ -151,8 +152,10 @@ async function resolvePassword (flags, { promptLabel = 'Password: ' } = {}) {
   if (process.stdin.isTTY) return await ask(promptLabel, { silent: true })
   console.error(
     'No password provided and stdin is not a TTY.\n' +
-    'Pipe it in non-interactively, e.g.:\n' +
-    '  echo "$WIZ_PW" | wiz login --user=you@example.com --password-stdin'
+    'Options:\n' +
+    '  - Set WIZ_PASSWORD env var\n' +
+    '  - Pipe via stdin, e.g.:\n' +
+    '    echo "$WIZ_PW" | wiz login --user=you@example.com --password-stdin'
   )
   process.exit(1)
 }
@@ -216,6 +219,7 @@ async function main () {
       }
       case 'login': {
         // Support: wiz login [--user=EMAIL] [--password-stdin] [--endpoint=URL] [--no-save-password]
+        // Env: WIZ_USER (userId), WIZ_PASSWORD (password) — fallback before TTY prompt
         const flags = {}
         for (const a of rest) {
           const m = a.match(/^--([^=]+)(?:=(.*))?$/)
@@ -231,18 +235,25 @@ async function main () {
         } else {
           console.log('Password will NOT be stored. Token expires ~every 15 min; you\'ll need to re-run `wiz login`.')
         }
-        // userId: --user flag (required for the non-interactive stdin path,
-        // which consumes stdin and so can't also prompt), else TTY prompt.
-        let userId = flags.user
-        if (!userId && !flags['password-stdin'] && process.stdin.isTTY) {
+        // userId: --user flag > WIZ_USER env > TTY prompt
+        let userId = flags.user || process.env.WIZ_USER
+        if (!userId && !flags['password-stdin'] && !process.env.WIZ_PASSWORD && process.stdin.isTTY) {
           userId = await ask('WizNote userId (email): ')
         }
         userId = (userId || '').trim()
         if (!userId) {
-          console.error('Missing userId. Pass --user=you@example.com (required with --password-stdin).')
+          console.error('Missing userId. Pass --user=you@example.com or set WIZ_USER env.')
           process.exit(1)
         }
-        const password = await resolvePassword(flags)
+        // password: --password-stdin > WIZ_PASSWORD env > TTY prompt
+        let password
+        if (flags['password-stdin']) {
+          password = await readStdin()
+        } else if (process.env.WIZ_PASSWORD) {
+          password = process.env.WIZ_PASSWORD
+        } else {
+          password = await resolvePassword(flags)
+        }
         if (!password) { console.error('Empty password.'); process.exit(1) }
         const wiz = await WizClient.login({
           userId, password, endpoint,

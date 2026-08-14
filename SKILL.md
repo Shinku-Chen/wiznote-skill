@@ -41,6 +41,11 @@ Tell the user to run this **in their own terminal** — never accept a password 
 node ~/.claude/skills/wiznote-api/scripts/wiz.js login
 
 # Non-interactive (containers / CI / OpenClaw — no TTY, no keychain):
+# Option A: env vars
+WIZ_USER=you@example.com WIZ_PASSWORD=... node ~/.claude/skills/wiznote-api/scripts/wiz.js login \
+  [--endpoint=https://your-host]
+
+# Option B: pipe via stdin
 echo "$WIZ_PW" | node ~/.claude/skills/wiznote-api/scripts/wiz.js login \
   --user=you@example.com --password-stdin [--endpoint=https://your-host]
 ```
