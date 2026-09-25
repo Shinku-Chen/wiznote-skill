@@ -541,6 +541,27 @@ SDK 等价入口：`wiz.findLegacyRenderProblems(data)`、`wiz.downgradeDocData(
 （即 `wiz collab new` / `wiz collab update`）在写块数据前会自动过一道 `downgradeBlocks()`，
 所以新写入的表格 / 代码块**桌面客户端和网页版都能渲染**，不需要额外再跑一次 `collab downgrade`。
 
+## 笔记体检（`wiz doctor`）
+
+一条命令扫全库，报告存量笔记的几类问题：
+
+| 检查项 | 含义 | 可否自动修 |
+|---|---|---|
+| `collab-render` | 协作笔记块格式老桌面客户端渲染不了（表格缺 `rows`、单元格是对象、缺 `blocks`、空 `insert`） | ✅ `wiz doctor --fix`（逐条降级） |
+| `broken-resource-refs` | 正文引用的 `index_files/<name>` 不在笔记资源清单里（图片/附件断链） | ❌ 需人工确认 |
+| `empty-body` | 正文、内嵌资源、附件都为空（多为没写完的笔记） | ❌ |
+| `title-suffix` | 标题末尾多余的 `.md` / `.md.md` / `·md`（导入类工具留下的） | ✅ `wiz doctor --fix-titles`（协作笔记连正文首行一起改） |
+
+```bash
+wiz doctor                                        # 只读体检（全库）
+wiz doctor --category=/生活/账号密码/ --limit=20     # 只看某个目录 / 前 N 条
+wiz doctor --fix --fix-titles                     # 顺手修可修的
+wiz doctor --json                                 # 机器可读结果
+```
+
+SDK：`wiz.doctor({ fix, fixTitles, category, limit })`；纯函数 `normalizeTitle` /
+`findResourceRefs` / `findBrokenResourceRefs` / `inspectNote`（都可单测，见 `test/doctor.test.js`）。
+
 ## Error handling
 
 Non-200 `returnCode` throws `WizApiError` with `.code` / `.externCode`.

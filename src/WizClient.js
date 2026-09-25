@@ -14,6 +14,7 @@ import {
 } from './collaboration.js'
 import { uploadAndEmbed, attachAndLink } from './embed.js'
 import { repairCollabDoc, scanCollabDocs, downgradeDocData, findLegacyRenderProblems } from './collab-repair.js'
+import { runDoctor } from './doctor.js'
 import { createMarkdownNote, updateMarkdownNote, readMarkdownNote } from './markdown.js'
 
 /**
@@ -263,6 +264,12 @@ export class WizClient {
 
   /** 纯函数:列出文档里老客户端渲染会失败的点。 */
   findLegacyRenderProblems (data) { return findLegacyRenderProblems(data) }
+
+  /**
+   * 笔记体检(`wiz doctor`)。默认只读;fix=true 顺手修可修的(协作笔记块格式),
+   * fixTitles=true 顺手清理标题里多余的 .md 后缀(协作笔记连正文首行一起改)。
+   */
+  doctor (opts) { return runDoctor(this, opts) }
 
   /** Cheap dedupe probe: does the KS already have these bytes? */
   hasCollabResource (docGuid, bufferOrHash) { return hasCollabResource(this, docGuid, bufferOrHash) }

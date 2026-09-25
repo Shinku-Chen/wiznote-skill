@@ -120,6 +120,13 @@ function usage () {
   collab downgrade <docGuid> [--apply]    Convert a collab doc's block format back to what that
                                           client can render (content unchanged; dry-run by default)
 
+  doctor [--fix] [--fix-titles] [--json] [--category=/x/] [--limit=N]
+                                          Health-check every note in the knowledge base:
+                                          un-renderable collab block formats, broken
+                                          index_files references, empty notes, titles with
+                                          a stray .md suffix. Read-only unless --fix /
+                                          --fix-titles is given.
+
 Global flags:
   --insecure         Skip TLS cert verification for THIS run only (or set
                      WIZ_INSECURE_TLS=1). For a persistent, auto-expiring
@@ -533,6 +540,37 @@ async function main () {
             console.error('unknown collab subcommand:', sub)
             process.exit(1)
         }
+        break
+      }
+      case 'doctor': {
+        const flags = {}
+        for (const a of rest) {
+          const m = a.match(/^--([^=]+)(?:=(.*))?$/)
+          if (m) flags[m[1]] = m[2] === undefined ? true : m[2]
+        }
+        const wiz = await WizClient.fromStored()
+        const r = await wiz.doctor({
+          fix: !!flags.fix,
+          fixTitles: !!flags['fix-titles'],
+          category: typeof flags.category === 'string' ? flags.category : null,
+          limit: flags.limit ? Number(flags.limit) : 0,
+          onProgress: flags.json ? undefined : ({ scanned, issues }) => {
+            if (scanned % 50 === 0) console.error(`  …已体检 ${scanned} 条（发现 ${issues} 处问题）`)
+          }
+        })
+        if (flags.json) { console.log(JSON.stringify(r, null, 2)); break }
+        console.log(`体检完成：${r.scanned} 条笔记 / ${r.categories} 个分类`)
+        const kinds = Object.entries(r.byKind).sort((a, b) => b[1] - a[1])
+        if (!kinds.length) console.log('没有发现问题 ✅')
+        for (const [kind, count] of kinds) console.log(`  - ${kind}: ${count}`)
+        if (flags.fix || flags['fix-titles']) console.log(`已修复 ${r.fixedCount} 处`)
+        const fixable = r.issues.filter((i) => i.fixable).length
+        if (fixable && !flags.fix) console.log(`提示：${fixable} 处可用 \`wiz doctor --fix\` 自动修复（协作笔记块格式降级）`)
+        if (r.issues.some((i) => i.fixableByTitles) && !flags['fix-titles']) console.log('提示：标题多余的 .md 可用 `wiz doctor --fix-titles` 清理')
+        for (const issue of r.issues.slice(0, 30)) {
+          console.log(`  · [${issue.kind}] ${String(issue.title).slice(0, 26)} ${issue.category || ''} ${issue.detail ? '| ' + issue.detail : ''}`)
+        }
+        if (r.issues.length > 30) console.log(`  …还有 ${r.issues.length - 30} 条，用 --json 看全部`)
         break
       }
       case 'res': {
