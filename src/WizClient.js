@@ -13,6 +13,7 @@ import {
   hasCollabResource
 } from './collaboration.js'
 import { uploadAndEmbed, attachAndLink } from './embed.js'
+import { repairCollabDoc, scanCollabDocs, downgradeDocData, findLegacyRenderProblems } from './collab-repair.js'
 import { createMarkdownNote, updateMarkdownNote, readMarkdownNote } from './markdown.js'
 
 /**
@@ -247,6 +248,21 @@ export class WizClient {
 
   /** One-shot: upload files AND insert matching embed blocks in a collab note. */
   collabUploadAndEmbed (docGuid, items, opts) { return collabUploadAndEmbed(this, docGuid, items, opts) }
+
+  /**
+   * 体检单条协作笔记:老桌面客户端(0.1.107)渲染不出来的块格式问题。
+   * apply=true 时降级写回(内容不变,只改结构),写回后会校验并抛错失败。
+   */
+  repairCollabDoc (docGuid, opts) { return repairCollabDoc(this, docGuid, opts) }
+
+  /** 扫全库协作笔记,列出会被老客户端渲染崩的那些。 */
+  scanCollabDocs (opts) { return scanCollabDocs(this, opts) }
+
+  /** 纯函数:新格式块数据 → 老客户端能渲染的老格式。 */
+  downgradeDocData (data) { return downgradeDocData(data) }
+
+  /** 纯函数:列出文档里老客户端渲染会失败的点。 */
+  findLegacyRenderProblems (data) { return findLegacyRenderProblems(data) }
 
   /** Cheap dedupe probe: does the KS already have these bytes? */
   hasCollabResource (docGuid, bufferOrHash) { return hasCollabResource(this, docGuid, bufferOrHash) }
