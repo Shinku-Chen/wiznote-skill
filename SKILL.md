@@ -550,12 +550,12 @@ SDK 等价入口：`wiz.findLegacyRenderProblems(data)`、`wiz.downgradeDocData(
 | `collab-render` | 协作笔记块格式老桌面客户端渲染不了（表格缺 `rows`、单元格是对象、缺 `blocks`、空 `insert`） | ✅ `wiz doctor --fix`（逐条降级） |
 | `broken-resource-refs` | 正文引用的 `index_files/<name>` 不在笔记资源清单里（图片/附件断链） | ❌ 需人工确认 |
 | `empty-body` | 正文、内嵌资源、附件都为空（多为没写完的笔记） | ❌ |
-| `markdown-shell-missing` | Markdown 笔记（`type` 以 `/markdown`、`/md`、`/ma` 结尾）正文缺 HTML5 外壳 → 客户端打开是**空白**，但「历史记录」还能看到内容 | ✅ `wiz doctor --fix`（html → markdown 转换后按规范外壳写回） |
-| `title-suffix` | 标题末尾多余的 `.md` / `.md.md` / `·md`（导入类工具留下的） | ✅ `wiz doctor --fix-titles`（协作笔记连正文首行一起改） |
+| `markdown-shell-missing` | 客户端会按 Markdown 打开的笔记（`type` 以 `/markdown`、`/md`、`/ma` 结尾，**或标题带 `.md`**）正文缺 HTML5 外壳 → 打开是**空白**，但「历史记录」还能看到内容 | ✅ `wiz doctor --fix`（html → markdown 转换后按规范外壳写回） |
+| `title-suffix` | **非** markdown 类型（`type` 不带 `/markdown`、`/md`、`/ma`）的笔记标题带 `.md` —— 它会被客户端当 Markdown 打开 | ✅ `wiz doctor --fix-titles`（协作笔记连正文首行一起改） |
 
 > 客户端判定「Markdown 笔记」有两种来源：`type` 以 `/markdown`、`/md`、`/ma` 结尾，**或标题里带 `.md`**
-> （`type` 恰好等于 `markdown` 不算）。标题型的那类会让本来正常的笔记也按 Markdown 打开、没有外壳就空白 ——
-> `title-suffix` 检查 + `--fix-titles` 处理的就是它。
+> （`type` 恰好等于 `markdown` 不算）。markdown 类型笔记用 `.md` 标题是**既有约定**（用户 2026-09-25 决定保留），
+> 所以只有非 markdown 类型带 `.md` 标题时才提示；两种情况都缺外壳就按 `markdown-shell-missing` 修。
 
 ```bash
 wiz doctor                                        # 只读体检（全库）

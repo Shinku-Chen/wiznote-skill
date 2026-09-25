@@ -68,7 +68,7 @@ test('inspectNote flags the three problem shapes, not the healthy note', async (
   const wiz = fakeWiz()
   const byGuid = Object.fromEntries((await wiz.kb.getCategoryNotes({ category: '/A/' })).map((n) => [n.docGuid, n]))
   assert.deepEqual((await inspectNote(wiz, byGuid['d-ok'], { category: '/A/' })), [])
-  assert.deepEqual((await inspectNote(wiz, byGuid['d-md'], { category: '/A/' })).map((i) => i.kind), ['title-suffix'])
+  assert.deepEqual((await inspectNote(wiz, byGuid['d-md'], { category: '/A/' })).map((i) => i.kind).sort(), ['markdown-shell-missing', 'title-suffix'])
   assert.deepEqual((await inspectNote(wiz, byGuid['d-broken'], { category: '/A/' })).map((i) => i.kind), ['broken-resource-refs'])
   assert.deepEqual((await inspectNote(wiz, byGuid['d-empty'], { category: '/A/' })).map((i) => i.kind), ['empty-body'])
 })
@@ -77,8 +77,8 @@ test('runDoctor scans and groups issues by kind', async () => {
   const wiz = fakeWiz()
   const r = await runDoctor(wiz, { delayMs: 0 })
   assert.equal(r.scanned, 4)
-  assert.deepEqual(r.byKind, { 'title-suffix': 1, 'broken-resource-refs': 1, 'empty-body': 1 })
-  assert.equal(r.issues.length, 3)
+  assert.deepEqual(r.byKind, { 'title-suffix': 1, 'markdown-shell-missing': 1, 'broken-resource-refs': 1, 'empty-body': 1 })
+  assert.equal(r.issues.length, 4)
   assert.equal(r.fixedCount, 0)
   assert.deepEqual(wiz.calls.renamed, []) // 默认只读
 })
@@ -89,7 +89,7 @@ test('runDoctor --fix-titles renames and drops the title issue', async () => {
   assert.deepEqual(wiz.calls.renamed, [{ docGuid: 'd-md', title: '带后缀' }])
   assert.equal(r.byKind['title-suffix'], undefined)
   assert.equal(r.fixedCount, 1)
-  assert.deepEqual(r.byKind, { 'broken-resource-refs': 1, 'empty-body': 1 })
+  assert.deepEqual(r.byKind, { 'markdown-shell-missing': 1, 'broken-resource-refs': 1, 'empty-body': 1 })
 })
 
 test('runDoctor can be scoped to a category and limited', async () => {
@@ -217,4 +217,21 @@ test('runDoctor --fix rewrites the missing shell and clears the issue', async ()
   // 修完再体检一次应为干净
   const again = await runDoctor(wiz, { delayMs: 0 })
   assert.deepEqual(again.byKind, {})
+})
+
+test('markdown 类型笔记的 .md 标题不算问题，非 markdown 类型才算', async () => {
+  const wiz = {
+    kb: {
+      getCategories: async () => ({ result: ['/D/'] }),
+      getCategoryNotes: async () => [
+        { docGuid: 'md1', title: '周报.md', type: 'lite/markdown', attachmentCount: 0 },
+        { docGuid: 'doc1', title: '周报.md', type: 'document', attachmentCount: 0 }
+      ],
+      getNoteContent: async () => ({ html: '<!doctype html><html><body><pre>x</pre></body></html>', resources: [] }),
+      renameNote: async () => ({})
+    }
+  }
+  const notes = await wiz.kb.getCategoryNotes({ category: '/D/' })
+  assert.deepEqual(await inspectNote(wiz, notes[0], { category: '/D/' }), [])            // markdown 类型 + 外壳 → 干净
+  assert.deepEqual((await inspectNote(wiz, notes[1], { category: '/D/' })).map((i) => i.kind), ['title-suffix']) // document 类型 + .md 标题 → 提示
 })

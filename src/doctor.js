@@ -8,7 +8,8 @@
 //   markdown-shell-missing Markdown 笔记（type 后缀或标题 .md）正文不是 HTML5 外壳
 //                        → 客户端按 Markdown 打开显示空白（历史记录还能看到）→ 可用 --fix 转换写回
 //   empty-body           正文、内嵌资源、附件都为空（可能是没写完的笔记，仅提示）
-//   title-suffix         标题带多余的 .md / .md.md / ·md 后缀 → 可用 --fix-titles 清理
+//   title-suffix         非 markdown 类型的笔记标题带 .md 后缀（会被客户端当 markdown 打开）
+//                        → 可用 --fix-titles 清理（markdown 类型笔记的 .md 是约定，不报）
 //
 // 只读；只有显式 --fix / --fix-titles 才写。
 import { fetchCollabDocData, findLegacyRenderProblems } from './collab-repair.js'
@@ -154,9 +155,9 @@ export async function inspectNote (wiz, note, { category } = {}) {
     if (text.length === 0 && resources.length === 0 && attachments === 0) {
       problems.push({ ...base, kind: 'empty-body', detail: `正文/资源/附件都为空（html ${html.length} 字节）`, fixable: false })
     }
-    // 只对 type 判定为 markdown 的笔记查外壳：标题型 markdown（.md）由 title-suffix 检查
-    // + --fix-titles 处理（去掉标题后缀后客户端会按普通文档渲染，不需要转换正文）。
-    if (text.length > 0 && MARKDOWN_TYPE_SUFFIX.test(String(note.type || '')) && !hasMarkdownShell(html)) {
+    // 客户端判定 markdown 有两种来源（type 后缀 / 标题 .md），任一命中都必须有外壳，
+    // 否则打开就是空白。`.md` 后缀本身是用户认可的约定（标记 markdown 笔记），不算问题。
+    if (text.length > 0 && isMarkdownLike(note) && !hasMarkdownShell(html)) {
       problems.push({
         ...base,
         kind: 'markdown-shell-missing',
@@ -166,9 +167,11 @@ export async function inspectNote (wiz, note, { category } = {}) {
     }
   }
 
+  // `.md` 标题在 markdown 类型的笔记上是约定（用户 2026-09-25 决定保留），只在
+  // 「非 markdown 类型 + 标题带 .md」时才提示——那种笔记会被客户端当 markdown 打开。
   const title = normalizeTitle(note.title)
-  if (title.changed) {
-    problems.push({ ...base, kind: 'title-suffix', detail: `标题后缀「${title.suffix}」多余`, fixable: false, fixableByTitles: true, cleanTitle: title.clean })
+  if (title.changed && !MARKDOWN_TYPE_SUFFIX.test(String(note.type || ''))) {
+    problems.push({ ...base, kind: 'title-suffix', detail: `非 markdown 类型的笔记标题带「${title.suffix}」，会被客户端按 markdown 打开`, fixable: false, fixableByTitles: true, cleanTitle: title.clean })
   }
   return problems
 }
