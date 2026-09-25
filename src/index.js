@@ -15,7 +15,10 @@ export {
   hasCollabResource
 } from './collaboration.js'
 export { uploadAndEmbed, attachAndLink } from './embed.js'
-export { runDoctor, inspectNote, normalizeTitle, findResourceRefs, findBrokenResourceRefs } from './doctor.js'
+export {
+  runDoctor, inspectNote, normalizeTitle, findResourceRefs, findBrokenResourceRefs,
+  isMarkdownLike, hasMarkdownShell, htmlToMarkdown
+} from './doctor.js'
 export {
   findLegacyRenderProblems, downgradeDocData, downgradeBlocks, fetchCollabDocData,
   repairCollabDoc, scanCollabDocs

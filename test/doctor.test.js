@@ -4,7 +4,10 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { normalizeTitle, findResourceRefs, findBrokenResourceRefs, runDoctor, inspectNote } from '../src/doctor.js'
+import {
+  normalizeTitle, findResourceRefs, findBrokenResourceRefs, runDoctor, inspectNote,
+  hasMarkdownShell, isMarkdownLike, htmlToMarkdown
+} from '../src/doctor.js'
 
 test('normalizeTitle strips stray .md suffixes', () => {
   assert.deepEqual(normalizeTitle('周报 2020-11-06（TapAD 技术周会）.md'), { clean: '周报 2020-11-06（TapAD 技术周会）', changed: true, suffix: '.md' })
@@ -98,9 +101,9 @@ test('runDoctor can be scoped to a category and limited', async () => {
   assert.deepEqual(none.byKind, {})
 })
 
-test('lite/markdown notes written in document-wrapper form still count as having content', async () => {
-  // 历史工具把 markdown 笔记改写成 <div class="wiz-note-body"> 形式,unwrapMarkdown 取不到源,
-  // 不能因此误判成空笔记。
+test('lite/markdown notes written in document-wrapper form report the missing shell (not empty)', async () => {
+  // 历史工具把 markdown 笔记改写成 <div class="wiz-note-body"> 形式,unwrapMarkdown 取不到源:
+  // 报 markdown-shell-missing(可修),而不是误判成空笔记。
   const wiz = {
     kb: {
       getCategories: async () => ({ result: ['/B/'] }),
@@ -114,7 +117,7 @@ test('lite/markdown notes written in document-wrapper form still count as having
   }
   const r = await runDoctor(wiz, { delayMs: 0 })
   assert.equal(r.scanned, 1)
-  assert.deepEqual(r.byKind, {})
+  assert.deepEqual(r.byKind, { 'markdown-shell-missing': 1 })
 })
 
 test('a genuinely empty markdown shell is still reported', async () => {
@@ -131,4 +134,87 @@ test('a genuinely empty markdown shell is still reported', async () => {
   }
   const r = await runDoctor(wiz, { delayMs: 0 })
   assert.deepEqual(r.byKind, { 'empty-body': 1 })
+})
+
+// ── markdown 笔记外壳（客户端按 Markdown 打开，正文没有外壳就显示空白） ──────────
+
+test('hasMarkdownShell detects the markdown HTML5 shell', () => {
+  assert.equal(hasMarkdownShell('<!doctype html><html><body><pre>x</pre></body></html>'), true)
+  assert.equal(hasMarkdownShell('  <html><body><pre>x</pre></body></html>'), true)
+  assert.equal(hasMarkdownShell('<div class="wiz-note-body"><p>x</p></div>'), false)
+  assert.equal(hasMarkdownShell(''), false)
+})
+
+test('isMarkdownLike follows the client rule (type suffix or .md title)', () => {
+  assert.equal(isMarkdownLike({ type: 'lite/markdown', title: '普通标题' }), true)
+  assert.equal(isMarkdownLike({ type: 'document', title: '周报.md' }), true)
+  assert.equal(isMarkdownLike({ type: 'document', title: 'readme.md 说明' }), true)
+  // 客户端只认带斜杠的后缀：type 'markdown' 不算（会被当普通文档渲染）
+  assert.equal(isMarkdownLike({ type: 'markdown', title: '员工通讯录' }), false)
+  assert.equal(isMarkdownLike({ type: 'document', title: '普通标题' }), false)
+})
+
+test('htmlToMarkdown converts wrapper html back to markdown', () => {
+  const html = '<div class="wiz-note-body"><div class="wiz-note-html"><h1>标题</h1><p>正文</p><p><a href="https://a.b/c?x=1&amp;y=2">https://a.b/c?x=1&amp;y=2</a></p><p><strong>加粗</strong></p><ul><li>条目</li></ul></div></div>'
+  const md = htmlToMarkdown(html)
+  assert.match(md, /^# 标题$/m)
+  assert.match(md, /^正文$/m)
+  assert.match(md, /^https:\/\/a\.b\/c\?x=1&y=2$/m)   // 链接文字与 URL 相同 → 只输出 URL
+  assert.match(md, /^\*\*加粗\*\*$/m)
+  assert.match(md, /^- 条目$/m)
+  assert.ok(!md.includes('<'))
+  assert.ok(!md.includes('&amp;'))
+})
+
+test('htmlToMarkdown keeps a labelled link as a markdown link', () => {
+  const md = htmlToMarkdown('<p><a href="https://ex.com">点这里</a></p>')
+  assert.match(md, /\[点这里\]\(https:\/\/ex\.com\)/)
+})
+
+test('inspectNote flags markdown notes whose body lost the shell', async () => {
+  const wrapper = '<div class="wiz-note-body"><div class="wiz-note-html"><h1>标题</h1><p>有内容</p></div></div>'
+  const wiz = {
+    kb: {
+      getCategories: async () => ({ result: ['/C/'] }),
+      getCategoryNotes: async () => [
+        { docGuid: 'm1', title: '缺外壳', type: 'lite/markdown', attachmentCount: 0 },
+        { docGuid: 'm2', title: '已正常', type: 'lite/markdown', attachmentCount: 0 }
+      ],
+      getNoteContent: async (docGuid) => (docGuid === 'm1'
+        ? { html: wrapper, resources: [] }
+        : { html: '<!doctype html><html><body><pre># 正常</pre></body></html>', resources: [] }),
+      renameNote: async () => ({})
+    }
+  }
+  const notes = await wiz.kb.getCategoryNotes({ category: '/C/' })
+  assert.deepEqual((await inspectNote(wiz, notes[0], { category: '/C/' })).map((i) => i.kind), ['markdown-shell-missing'])
+  assert.deepEqual((await inspectNote(wiz, notes[1], { category: '/C/' })), [])
+})
+
+test('runDoctor --fix rewrites the missing shell and clears the issue', async () => {
+  const wrapper = '<div class="wiz-note-body"><div class="wiz-note-html"><h1>标题</h1><p>有内容</p></div></div>'
+  const store = { 'm1': wrapper }
+  const calls = []
+  const wiz = {
+    kb: {
+      getCategories: async () => ({ result: ['/C/'] }),
+      getCategoryNotes: async () => [{ docGuid: 'm1', title: '缺外壳', type: 'lite/markdown', attachmentCount: 0 }],
+      getNoteContent: async (docGuid) => ({ html: store[docGuid], resources: [] }),
+      renameNote: async () => ({})
+    },
+    updateMarkdownNote: async ({ docGuid, markdown }) => {
+      calls.push(markdown)
+      store[docGuid] = '<!doctype html><html><head><meta charset="utf-8"></head><body><pre>' + markdown + '</pre></body></html>'
+      return { returnCode: 200 }
+    }
+  }
+  const r = await runDoctor(wiz, { fix: true, delayMs: 0 })
+  assert.deepEqual(r.byKind, {})
+  assert.equal(r.fixedCount, 1)
+  assert.equal(calls.length, 1)
+  assert.match(calls[0], /^# 标题/m)
+  assert.match(calls[0], /有内容/)
+  // 修完再体检一次应为干净
+  const again = await runDoctor(wiz, { delayMs: 0 })
+  assert.deepEqual(again.byKind, {})
 })
