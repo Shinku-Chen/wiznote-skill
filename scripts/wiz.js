@@ -114,6 +114,11 @@ function usage () {
   collab embed <docGuid> <file>... [--prepend]
                                           Upload files to collab note and insert
                                           <img>/<audio>/<video>/<file-card> blocks
+  collab check                            Scan every collaboration note and list the ones the
+                                          legacy WizNote desktop client (0.1.107) cannot render
+                                          (table without rows / object-form cells / empty inserts)
+  collab downgrade <docGuid> [--apply]    Convert a collab doc's block format back to what that
+                                          client can render (content unchanged; dry-run by default)
 
 Global flags:
   --insecure         Skip TLS cert verification for THIS run only (or set
@@ -504,6 +509,24 @@ async function main () {
             }
             const dedup = r.uploaded.filter(u => u.deduped).length
             console.error(`— ${r.uploaded.length} embedded into ${docGuid} (${dedup} deduped, ${r.uploaded.length - dedup} bytes uploaded)`)
+            break
+          }
+          case 'check': {
+            const found = await wiz.scanCollabDocs({
+              onProgress: ({ title, problems }) => {
+                if (problems.length) console.error(`  ✗ ${title} — ${problems.join(', ')}`)
+              }
+            })
+            if (found.length === 0) console.error('— all collaboration notes are renderable by the legacy desktop client')
+            else console.error(`— ${found.length} note(s) need \`wiz collab downgrade <docGuid> --apply\``)
+            console.log(JSON.stringify(found, null, 2))
+            break
+          }
+          case 'downgrade': {
+            if (!positional[0]) { console.error('usage: wiz collab downgrade <docGuid> [--apply]'); process.exit(1) }
+            const r = await wiz.repairCollabDoc(positional[0], { apply: !!flags.apply })
+            console.log(JSON.stringify(r, null, 2))
+            if (r.problems.length && !r.applied) console.error('dry-run — re-run with --apply to write')
             break
           }
           default:

@@ -15,4 +15,8 @@ export {
   hasCollabResource
 } from './collaboration.js'
 export { uploadAndEmbed, attachAndLink } from './embed.js'
+export {
+  findLegacyRenderProblems, downgradeDocData, fetchCollabDocData,
+  repairCollabDoc, scanCollabDocs
+} from './collab-repair.js'
 export { wrapMarkdown, unwrapMarkdown, createMarkdownNote, updateMarkdownNote, readMarkdownNote } from './markdown.js'

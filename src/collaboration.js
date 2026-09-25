@@ -150,30 +150,22 @@ export async function fetchCollaborationContent (opts) {
  */
 export async function writeCollaborationBlocks (opts) {
   const s = await openSession(opts)
-  try {
-    // Fetch current state so we know the version and whether to delete-first.
+  // 读回文档当前状态:既用于初始版本判断,也用于每步之后校验是否真的落地。
+  const readState = async () => {
     s.send({ a: 'f', c: opts.kbGuid, d: opts.docGuid, v: null })
-    let v = opts.version ?? 0
-    let hasDoc = false
     try {
       const syncRaw = await s.recv({ predicate: m => m.data !== undefined, timeoutMs: 5000 })
       const parsed = JSON.parse(syncRaw)
-      const serverV = parsed?.data?.v ?? 0
-      if (serverV > v) v = serverV
-      hasDoc = parsed?.data?.type !== undefined && serverV > 0
+      return { version: parsed?.data?.v ?? 0, type: parsed?.data?.type ?? null }
     } catch {
-      // Empty doc; no sync response — that's fine, we'll create.
+      // 空文档 / 新文档:没有 sync 帧。
+      return { version: 0, type: null }
     }
-
-    const src = crypto.randomUUID().slice(0, 20)
-    let seq = 1
-    const deleteFirst = opts.deleteFirst ?? hasDoc
-
-    if (deleteFirst) {
-      s.send({ a: 'op', c: opts.kbGuid, d: opts.docGuid, v, src, seq, del: true })
-      await s.recv({ timeoutMs: 5000 })
-      seq++; v++
-    }
+  }
+  try {
+    let state = await readState()
+    let v = Math.max(opts.version ?? 0, state.version)
+    const deleteFirst = opts.deleteFirst ?? (state.type != null && state.version > 0)
 
     const docData = {
       blocks: opts.blocks || [],
@@ -183,29 +175,43 @@ export async function writeCollaborationBlocks (opts) {
       docData[id] = extra
     }
 
-    s.send({
-      a: 'op', c: opts.kbGuid, d: opts.docGuid,
-      v, src, seq,
-      create: {
-        type: 'http://sharejs.org/types/JSONv1',
-        data: docData
-      }
-    })
-    // Wait for the server's ack of OUR op — the frame echoes back src/seq or
-    // carries `v: v+1`. Without this the WS is closed in `finally` before the
-    // create bytes finish flushing on a freshly-minted note, and the write
-    // never lands (doc stays at v:0). Time out generously; if the server
-    // never acks, do a follow-up fetch to force a round trip that guarantees
-    // our op reached the server side.
-    try {
+    if (deleteFirst) {
+      const delSrc = crypto.randomUUID().slice(0, 20)
+      s.send({ a: 'op', c: opts.kbGuid, d: opts.docGuid, v, src: delSrc, seq: 1, del: true })
       await s.recv({
-        predicate: m => (m.a === 'op' && (m.src === src || m.v === v)) || m.v > v,
-        timeoutMs: 8000
-      })
-    } catch {
-      s.send({ a: 'f', c: opts.kbGuid, d: opts.docGuid, v: null })
-      await s.recv({ predicate: m => m.data !== undefined, timeoutMs: 5000 }).catch(() => {})
+        predicate: m => (m.a === 'op' && (m.src === delSrc || m.v > v)) || m.v > v,
+        timeoutMs: 6000
+      }).catch(() => {})
+      v++
+      // 让 delete 先落库,否则紧随其后的 create 可能被当成版本冲突而丢弃。
+      await new Promise(resolve => setTimeout(resolve, 150))
     }
+
+    // create:服务端 ack 不等于落地(2026-09 实测出现过 delete 落地、create 丢失,
+    // 文档被写空)。所以每次都回读校验,没落地就带着最新版本重发。
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const src = crypto.randomUUID().slice(0, 20)
+      s.send({
+        a: 'op', c: opts.kbGuid, d: opts.docGuid,
+        v, src, seq: 1,
+        create: {
+          type: 'http://sharejs.org/types/JSONv1',
+          data: docData
+        }
+      })
+      try {
+        await s.recv({
+          predicate: m => (m.a === 'op' && (m.src === src || m.v === v)) || m.v > v,
+          timeoutMs: 8000
+        })
+      } catch { /* 不在 ack 上判定,下面回读 */ }
+      await new Promise(resolve => setTimeout(resolve, 300))
+      state = await readState()
+      if (state.type != null && state.version > v) return { version: state.version }
+      if (state.version > v) v = state.version
+      await new Promise(resolve => setTimeout(resolve, 200))
+    }
+    throw new Error(`writeCollaborationBlocks: create 未落地 (doc v${v}, type=${state.type ?? 'null'})`)
   } finally {
     s.close()
   }

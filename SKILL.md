@@ -512,6 +512,31 @@ per file and a summary `N embedded (K deduped, N-K bytes uploaded)`.
 
 CLI: `wiz collab new "<title>" -f md.md [--category=/x/] [--tags=a,b] [--created=<ms|date>] [--modified=<ms|date>]`, `wiz collab read <docGuid>`, `wiz collab update <docGuid> -f md.md`.
 
+### 老版桌面客户端渲染不了的块格式（`wiz collab check` / `collab downgrade`）
+
+为知笔记桌面客户端（0.1.107，官方最后一个桌面构建，2024-07）只认**老格式**的块数据。
+用新版客户端 / 其它工具写进去的正文会让它渲染阶段抛异常，**笔记打开后正文一直转圈**：
+
+| 位置 | 老格式（能渲染） | 新格式（渲染崩） |
+|---|---|---|
+| 表格 / 代码块子单元 | 块数组 `[{id,type:'text',level:0,text:[ops]}]` | 对象 `{"__id":...,"__type":"table_cell","text":[ops]}` → `Assert Error` |
+| 表格块 | 必须有 `rows` | 缺 `rows` → `TypeError: … reading 'setCell'` |
+| 文档根 | `blocks: []` 表示空笔记 | 没有 `blocks` 字段 → `TypeError: … reading 'length'` |
+| 文本 op | 不允许空 `insert`；空单元写 `text: []` | `{insert:''}` → `Assert Error` |
+
+```bash
+# 全库体检:列出会被老客户端渲染崩的协作笔记（含问题类型）
+wiz collab check
+
+# 单条体检 + 降级写回（默认 dry-run，加 --apply 才写；内容不变，只改结构）
+wiz collab downgrade <docGuid>
+wiz collab downgrade <docGuid> --apply
+```
+
+SDK 等价入口：`wiz.findLegacyRenderProblems(data)`、`wiz.downgradeDocData(data)`（纯函数，
+幂等）、`wiz.repairCollabDoc(docGuid, { apply })`、`wiz.scanCollabDocs()`。
+降级是**可逆的**（老格式仍能被新客户端读），但只有在确实要迁就老客户端时才做。
+
 ## Error handling
 
 Non-200 `returnCode` throws `WizApiError` with `.code` / `.externCode`.
