@@ -16,7 +16,7 @@ export {
 } from './collaboration.js'
 export { uploadAndEmbed, attachAndLink } from './embed.js'
 export {
-  findLegacyRenderProblems, downgradeDocData, fetchCollabDocData,
+  findLegacyRenderProblems, downgradeDocData, downgradeBlocks, fetchCollabDocData,
   repairCollabDoc, scanCollabDocs
 } from './collab-repair.js'
 export { wrapMarkdown, unwrapMarkdown, createMarkdownNote, updateMarkdownNote, readMarkdownNote } from './markdown.js'

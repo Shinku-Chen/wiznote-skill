@@ -135,6 +135,19 @@ export function downgradeDocData (input) {
   return { data, stats }
 }
 
+/**
+ * 把 `markdownToBlocks()` 的输出规整成老客户端也能渲染的形状,返回同形的
+ * `{ blocks, extras }`,可直接喂给 `writeCollaborationBlocks`。
+ *
+ * `markdownToBlocks` 本身写的是新版块格式(表格无 `rows`、单元格是 `__type` 对象),
+ * 桌面客户端 0.1.107 渲染不了;写入前过一道这里,桌面端和网页版都能正常显示。
+ */
+export function downgradeBlocks ({ blocks, extras = {} }) {
+  const { data } = downgradeDocData({ blocks: [...(blocks || [])], ...extras })
+  const { blocks: fixedBlocks, ...fixedExtras } = data
+  return { blocks: fixedBlocks, extras: fixedExtras }
+}
+
 /** 读一条协作文档的当前内容。 */
 export async function fetchCollabDocData (wiz, docGuid) {
   const tokenRes = await wiz.getCollaborationToken(docGuid)

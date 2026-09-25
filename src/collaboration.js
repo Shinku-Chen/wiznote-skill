@@ -8,6 +8,7 @@
 import crypto from 'node:crypto'
 import { execRequest } from './request.js'
 import { markdownToBlocks, blocksToMarkdown } from './blocks.js'
+import { downgradeBlocks } from './collab-repair.js'
 
 const DEBUG = !!process.env.WIZ_WS_DEBUG
 
@@ -507,7 +508,7 @@ export async function createCollaborationNote (wiz, {
     await writeCollaborationBlocks({
       kbServer: wiz.kbServer, kbGuid: wiz.kbGuid, docGuid,
       userGuid: wiz.userGuid, editorToken,
-      blocks, extras, version: 0
+      ...downgradeBlocks({ blocks, extras }), version: 0
     })
   }
   // /ks/note/create ignores created/dataModified (server stamps now), so backdate
@@ -541,7 +542,7 @@ export async function updateCollaborationNote (wiz, { docGuid, markdown, title }
   await writeCollaborationBlocks({
     kbServer: wiz.kbServer, kbGuid: wiz.kbGuid, docGuid,
     userGuid: wiz.userGuid, editorToken,
-    blocks, extras
+    ...downgradeBlocks({ blocks, extras })
   })
   return { docGuid, status: 'updated' }
 }

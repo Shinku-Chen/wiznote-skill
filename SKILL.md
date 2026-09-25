@@ -537,6 +537,10 @@ SDK 等价入口：`wiz.findLegacyRenderProblems(data)`、`wiz.downgradeDocData(
 幂等）、`wiz.repairCollabDoc(docGuid, { apply })`、`wiz.scanCollabDocs()`。
 降级是**可逆的**（老格式仍能被新客户端读），但只有在确实要迁就老客户端时才做。
 
+**写入端默认就是老格式**：`createCollaborationNote` / `updateCollaborationNote`
+（即 `wiz collab new` / `wiz collab update`）在写块数据前会自动过一道 `downgradeBlocks()`，
+所以新写入的表格 / 代码块**桌面客户端和网页版都能渲染**，不需要额外再跑一次 `collab downgrade`。
+
 ## Error handling
 
 Non-200 `returnCode` throws `WizApiError` with `.code` / `.externCode`.

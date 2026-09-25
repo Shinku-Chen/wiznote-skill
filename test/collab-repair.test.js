@@ -122,3 +122,26 @@ test('downgradeDocData does not mutate its input', () => {
   downgradeDocData(input)
   assert.equal(JSON.stringify(input), snapshot)
 })
+
+test('downgradeBlocks makes fresh markdownToBlocks output renderable', async () => {
+  const { markdownToBlocks } = await import('../src/blocks.js')
+  const { downgradeBlocks } = await import('../src/collab-repair.js')
+
+  const raw = markdownToBlocks('# title\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n```js\nx()\n```\n')
+  // 写入器本身产出的是新格式——桌面客户端会渲染崩
+  assert.notDeepEqual(findLegacyRenderProblems({ blocks: raw.blocks, ...raw.extras }), [])
+
+  const fixed = downgradeBlocks(raw)
+  assert.deepEqual(findLegacyRenderProblems({ blocks: fixed.blocks, ...fixed.extras }), [])
+
+  const table = fixed.blocks.find((b) => b.type === 'table')
+  assert.equal(table.rows, 2)
+  assert.equal(table.cols, 2)
+  assert.ok(Array.isArray(fixed.extras[table.children[0]]))
+  const code = fixed.blocks.find((b) => b.type === 'code')
+  assert.ok(Array.isArray(fixed.extras[code.children[0]]))
+  // 正文内容不丢
+  const flat = JSON.stringify(fixed)
+  assert.ok(flat.includes('x()'))
+  assert.ok(flat.includes('"a"'))
+})
