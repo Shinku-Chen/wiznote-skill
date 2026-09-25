@@ -566,7 +566,7 @@ async function main () {
         if (flags.fix || flags['fix-titles']) console.log(`已修复 ${r.fixedCount} 处`)
         const fixable = r.issues.filter((i) => i.fixable).length
         if (fixable && !flags.fix) console.log(`提示：${fixable} 处可用 \`wiz doctor --fix\` 自动修复（协作笔记块格式降级）`)
-        if (r.issues.some((i) => i.fixableByTitles) && !flags['fix-titles']) console.log('提示：标题多余的 .md 可用 `wiz doctor --fix-titles` 清理')
+        if (r.issues.some((i) => i.fixableByTitles) && !flags['fix-titles']) console.log('提示：非 markdown 类型笔记的 .md 标题可用 `wiz doctor --fix-titles` 去掉（去掉后客户端按普通文档渲染）')
         for (const issue of r.issues.slice(0, 30)) {
           console.log(`  · [${issue.kind}] ${String(issue.title).slice(0, 26)} ${issue.category || ''} ${issue.detail ? '| ' + issue.detail : ''}`)
         }
